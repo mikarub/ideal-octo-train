@@ -25,33 +25,44 @@ def spinner(stop_event, pause_event):
 	This is the actual spinner.
 	"""
 	spinner_cycle = itertools.cycle(['|', '/', '-', '\\'])
+	speed = 0.1
+	fading = False
+	
 	while not stop_event.is_set():
 		if not pause_event.is_set():
-			sys.stdout.write('\rWaiting for input...' + next(spinner_cycle))
+			sys.stdout.write('\rWaiting for input... ' + next(spinner_cycle))
 			sys.stdout.flush()
-		time.sleep(0.1)
+			time.sleep(speed)
+		else:
+			if not fading:
+				fading = True
+				for delay in [0.15, 0.25, 0.35, 0.45, 0.55]:
+					if stop_event.is_set():
+						break
+					sys.stdout.write('\rWaiting for input... ' + next(spinner_cycle))
+					sys.stdout.flush()
+					time.sleep(delay)
+			break
 	sys.stdout.write('\r' + ' ' * 40 + '\r') # clear line
+					
 	
 stop_event = threading.Event()
 pause_event = threading.Event()
 spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event))
-
-# Start the spinner
 spinner_thread.start()
 
-# Check for typing while waiting for input
-user_input = ''
 sys.stdout.write("Please type something: ")
 sys.stdout.flush()
 
+# Watch for user typing
 while True:
 	if key_pressed():
-		pause_event.set() # Pause spinner
-	try:
-		user_input = input() # Standard input
+		pause_event.set() # Triggers fade-out
 		break
-	except KeyboardInterrupt:
-		break
+	time.sleep(0.05)
+
+# Then actually get input normally
+user_input = input() # Standard input
 
 # Stop the spinner
 stop_event.set()
