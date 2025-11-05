@@ -35,9 +35,12 @@ def spinner(stop_event, pause_event, message="Waiting for input... "):
 					sys.stdout.flush()
 					time.sleep(delay)
 			break
-	sys.stdout.write('\r' + ' ' * 40 + '\r') # clear line
+	sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r') # clear line
 
-def spinner_input(prompt):					
+def spinner_input(prompt):
+	"""
+	Reusable input with spinner
+	"""					
 	stop_event = threading.Event()
 	pause_event = threading.Event()
 	spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event))
@@ -61,11 +64,26 @@ def spinner_input(prompt):
 	spinner_thread.join()
 	return user_input
 
-if __name__ == "__main__":
+# Example interactive program
+def run_wizard():
+	print("=== Welcome to the Setup Wizard ===\n")
+	
 	name = spinner_input("What is your name? ")
 	age = spinner_input("How old are you? ")
-	hobby = spinner_input("What's your favourite hobby? ")
+	hobby = spinner_input("What is your favourite hobby? ")
+	fav_lang = spinner_input("Favourite programming language? ")
+	
+	print("\nProcessing your responses...\n")
+	time.sleep(1)
 	
 	print(f"Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}.")
+	print(f"Your favourite language is {fav_lang}.")
+	print("Setup complete!")
 
+
+if __name__ == "__main__":
+	run_wizard()
+	
+	
+	
 
