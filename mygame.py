@@ -11,6 +11,7 @@ import select, termios, tty
 import random
 from colorama import init, Fore, Style
 
+# --- Spinner styles ---
 SPINNER_STYLES = [
     ['|', '/', '-', '\\'],                  # classic line
     ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'],  # Braille dots
@@ -20,8 +21,7 @@ SPINNER_STYLES = [
     ['.  ', '.. ', '...', ' ..', '  .', '   ']   # dot pulse
 ]
 
-# SPINNER_COLORS = [Fore.CYAN, Fore.MAGENTA, Fore.YELLOW, Fore.GREEN, Fore.BLUE, Fore.WHITE]
-
+# --- Theme definitions ---
 THEMES = {
     "cyberpunk": {
         "spinner_colors": [Fore.MAGENTA, Fore.CYAN, Fore.YELLOW],
@@ -53,10 +53,8 @@ def key_pressed():
 	dr, dw, de = select.select([sys.stdin], [], [], 0)
 	return bool(dr)
 
-def spinner(stop_event, pause_event, message="Waiting for input... ", style=None, color=Fore.CYAN):
-	"""
-	This is the actual spinner thread function.
-	"""
+# --- Spinner thread function ---
+def spinner(stop_event, pause_event, message, style, color):
 	spinner_cycle = itertools.cycle(style)
 	fading = False
 	
@@ -75,12 +73,10 @@ def spinner(stop_event, pause_event, message="Waiting for input... ", style=None
 					sys.stdout.flush()
 					time.sleep(delay)
 			break
-	sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r') # clear line
+		sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r') # clear line
 
-def spinner_input(prompt, theme):
-	"""
-	Reusable input with spinner
-	"""					
+# --- Reusable input with spinner ---
+def spinner_input(prompt, theme):					
 	stop_event = threading.Event()
 	pause_event = threading.Event()
 	
@@ -107,11 +103,24 @@ def spinner_input(prompt, theme):
 	spinner_thread.join()
 	return user_input
 
-# Main interactive loop
-def run_wizard(theme_name="cyberpunk"):
-	theme = THEMES.get(theme_name.lower(), THEMES["classic"])
-	
-	print(theme["accent"] + f"=== {theme_name.title()} Spinner Wizard ===" + Style.RESET_ALL)
+# --- Interactive theme selection ---
+def select_theme():
+	print("Choose a theme for your wizard:")
+	for i, theme_name in enumerate(THEMES.keys(), start=1):
+		print(f"  {i}. {theme_name.title()}")
+		
+	while True:
+		choice = input("Enter the number of your theme: ").strip()
+		if choice.isdigit() and 1 <= int(choice) <= len(THEMES):
+			selected = list(THEMES.keys())[int(choice)-1]
+			print(f"Selected theme: {selected.title()}\n")
+			return THEMES[selected]
+		else:
+			print("Invalid choice. Please enter a number from the list.")
+
+# --- Main wizard loop ---
+def run_wizard(theme):
+	print(theme["accent"] + "=== Dynamic Themed Spinner Wizard ===" + Style.RESET_ALL)
 	print(theme["text_color"] + "(Type 'exit' anytime to quit)\n")
 	
 	while True:
@@ -136,8 +145,8 @@ def run_wizard(theme_name="cyberpunk"):
 		
 	print(theme["accent"] + "\nGoodbye!" + Style.RESET_ALL)
 
-
+# --- Run program ---
 if __name__ == "__main__":
-	# Choose a theme here: "cyberpunk", "nature", "matrix" or "classic"
-	run_wizard("classic")
+	chosen_theme = select_theme()
+	run_wizard(chosen_theme)
 
