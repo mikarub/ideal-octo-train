@@ -7,67 +7,65 @@ import threading
 import itertools
 import time
 import sys
+import select, termios, tty
 
-# Detect keypresses cross-platform
-try:
-	import msvcrt # in case anyone on windows ever use this code
-	def key_pressed():
-		return msvcrt.kbhit()
-except ImportError:
-	import select, termios, tty # Unix
-	import sys
-	def key_pressed():
-		dr, dw, de = select.select([sys.stdin], [], [], 0)
-		return bool(dr)
+def key_pressed():
+	dr, dw, de = select.select([sys.stdin], [], [], 0)
+	return bool(dr)
 
-def spinner(stop_event, pause_event):
+def spinner(stop_event, pause_event, message="Waiting for input... "):
 	"""
-	This is the actual spinner.
+	This is the actual spinner function.
 	"""
 	spinner_cycle = itertools.cycle(['|', '/', '-', '\\'])
-	speed = 0.1
 	fading = False
 	
 	while not stop_event.is_set():
 		if not pause_event.is_set():
-			sys.stdout.write('\rWaiting for input... ' + next(spinner_cycle))
+			sys.stdout.write('\r' + message + next(spinner_cycle))
 			sys.stdout.flush()
-			time.sleep(speed)
+			time.sleep(0.1)
 		else:
+			# Smooth fade-out
 			if not fading:
 				fading = True
 				for delay in [0.15, 0.25, 0.35, 0.45, 0.55]:
-					if stop_event.is_set():
-						break
-					sys.stdout.write('\rWaiting for input... ' + next(spinner_cycle))
+					if stop_event.is_set(): break
+					sys.stdout.write('\r' + message + next(spinner_cycle))
 					sys.stdout.flush()
 					time.sleep(delay)
 			break
 	sys.stdout.write('\r' + ' ' * 40 + '\r') # clear line
-					
+
+def spinner_input(prompt):					
+	stop_event = threading.Event()
+	pause_event = threading.Event()
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event))
+	spinner_thread.start()
+
+	sys.stdout.write(prompt)
+	sys.stdout.flush()
+
+	# Pause spinner once user starts typing
+	while True:
+		if key_pressed():
+			pause_event.set() # Triggers fade-out
+			break
+		time.sleep(0.05)
+
+	# Then actually get input normally
+	user_input = input() # Standard input
+
+	# Stop the spinner
+	stop_event.set()
+	spinner_thread.join()
+	return user_input
+
+if __name__ == "__main__":
+	name = spinner_input("What is your name? ")
+	age = spinner_input("How old are you? ")
+	hobby = spinner_input("What's your favourite hobby? ")
 	
-stop_event = threading.Event()
-pause_event = threading.Event()
-spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event))
-spinner_thread.start()
-
-sys.stdout.write("Please type something: ")
-sys.stdout.flush()
-
-# Watch for user typing
-while True:
-	if key_pressed():
-		pause_event.set() # Triggers fade-out
-		break
-	time.sleep(0.05)
-
-# Then actually get input normally
-user_input = input() # Standard input
-
-# Stop the spinner
-stop_event.set()
-spinner_thread.join()
-
-print(f"You typed: {user_input}")
+	print(f"Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}.")
 
 
