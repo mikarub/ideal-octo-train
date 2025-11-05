@@ -64,21 +64,32 @@ def spinner_input(prompt):
 	spinner_thread.join()
 	return user_input
 
-# Example interactive program
+# Looping wizard
 def run_wizard():
-	print("=== Welcome to the Setup Wizard ===\n")
+	print("=== Interactive Wizard ===\n")
+	print("(Type 'exit' anytime to quit)\n")
 	
-	name = spinner_input("What is your name? ")
-	age = spinner_input("How old are you? ")
-	hobby = spinner_input("What is your favourite hobby? ")
-	fav_lang = spinner_input("Favourite programming language? ")
+	while True:
+		name = spinner_input("What is your name? ")
+		if name.lower() == "exit": break
+		
+		age = spinner_input("How old are you? ")
+		if age.lower() == "exit": break
+		
+		hobby = spinner_input("What is your favourite hobby? ")
+		if hobby.lower() == "exit": break
+		
+		fav_lang = spinner_input("Favourite programming language? ")
+		if fav_lang.lower() == "exit": break
 	
-	print("\nProcessing your responses...\n")
-	time.sleep(1)
+		print("\nProcessing your responses...\n")
+		time.sleep(1)
 	
-	print(f"Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}.")
-	print(f"Your favourite language is {fav_lang}.")
-	print("Setup complete!")
+		print(f"Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}.")
+		print(f"Your favourite language is {fav_lang}.")
+		print("Let's go again! (or type 'exit' to quit)\n")
+		
+	print("\nGoodbye!")
 
 
 if __name__ == "__main__":
