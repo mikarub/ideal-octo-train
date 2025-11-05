@@ -8,16 +8,26 @@ import itertools
 import time
 import sys
 import select, termios, tty
+import random
+
+SPINNER_STYLES = [
+    ['|', '/', '-', '\\'],                  # classic line
+    ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'],  # Braille dots
+    ['◐','◓','◑','◒'],                    # quarter circles
+    ['←','↖','↑','↗','→','↘','↓','↙'],     # arrow wheel
+    ['▁','▃','▄','▅','▆','▇','▆','▅','▄','▃'],  # bounce bar
+    ['.  ', '.. ', '...', ' ..', '  .', '   ']   # dot pulse
+]
 
 def key_pressed():
 	dr, dw, de = select.select([sys.stdin], [], [], 0)
 	return bool(dr)
 
-def spinner(stop_event, pause_event, message="Waiting for input... "):
+def spinner(stop_event, pause_event, message="Waiting for input... ", style=None):
 	"""
 	This is the actual spinner function.
 	"""
-	spinner_cycle = itertools.cycle(['|', '/', '-', '\\'])
+	spinner_cycle = itertools.cycle(style or SPINNER_STYLES[0])
 	fading = False
 	
 	while not stop_event.is_set():
@@ -43,7 +53,8 @@ def spinner_input(prompt):
 	"""					
 	stop_event = threading.Event()
 	pause_event = threading.Event()
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event))
+	style = random.choice(SPINNER_STYLES)
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event, "Waiting for input", style))
 	spinner_thread.start()
 
 	sys.stdout.write(prompt)
@@ -64,9 +75,9 @@ def spinner_input(prompt):
 	spinner_thread.join()
 	return user_input
 
-# Looping wizard
+# Main interactive loop
 def run_wizard():
-	print("=== Interactive Wizard ===\n")
+	print("=== Dynamic Spinner Wizard ===\n")
 	print("(Type 'exit' anytime to quit)\n")
 	
 	while True:
@@ -83,7 +94,7 @@ def run_wizard():
 		if fav_lang.lower() == "exit": break
 	
 		print("\nProcessing your responses...\n")
-		time.sleep(1)
+		time.sleep(1.2)
 	
 		print(f"Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}.")
 		print(f"Your favourite language is {fav_lang}.")
