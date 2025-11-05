@@ -9,6 +9,7 @@ import time
 import sys
 import select, termios, tty
 import random
+from colorama import init, Fore, Style
 
 SPINNER_STYLES = [
     ['|', '/', '-', '\\'],                  # classic line
@@ -19,11 +20,13 @@ SPINNER_STYLES = [
     ['.  ', '.. ', '...', ' ..', '  .', '   ']   # dot pulse
 ]
 
+SPINNER_COLORS = [Fore.CYAN, Fore.MAGENTA, Fore.YELLOW, Fore.GREEN, Fore.BLUE, Fore.WHITE]
+
 def key_pressed():
 	dr, dw, de = select.select([sys.stdin], [], [], 0)
 	return bool(dr)
 
-def spinner(stop_event, pause_event, message="Waiting for input... ", style=None):
+def spinner(stop_event, pause_event, message="Waiting for input... ", style=None, color=Fore.CYAN):
 	"""
 	This is the actual spinner function.
 	"""
@@ -32,7 +35,7 @@ def spinner(stop_event, pause_event, message="Waiting for input... ", style=None
 	
 	while not stop_event.is_set():
 		if not pause_event.is_set():
-			sys.stdout.write('\r' + message + next(spinner_cycle))
+			sys.stdout.write('\r' + color + message + next(spinner_cycle) + Style.RESET_ALL)
 			sys.stdout.flush()
 			time.sleep(0.1)
 		else:
@@ -41,7 +44,7 @@ def spinner(stop_event, pause_event, message="Waiting for input... ", style=None
 				fading = True
 				for delay in [0.15, 0.25, 0.35, 0.45, 0.55]:
 					if stop_event.is_set(): break
-					sys.stdout.write('\r' + message + next(spinner_cycle))
+					sys.stdout.write('\r' + color + message + next(spinner_cycle) + Style.RESET_ALL)
 					sys.stdout.flush()
 					time.sleep(delay)
 			break
@@ -54,10 +57,11 @@ def spinner_input(prompt):
 	stop_event = threading.Event()
 	pause_event = threading.Event()
 	style = random.choice(SPINNER_STYLES)
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event, "Waiting for input", style))
+	color = random.choice(SPINNER_COLORS)
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event, "Waiting for input", style, color))
 	spinner_thread.start()
 
-	sys.stdout.write(prompt)
+	sys.stdout.write(Fore.CYAN + prompt + Style.RESET_ALL)
 	sys.stdout.flush()
 
 	# Pause spinner once user starts typing
@@ -77,8 +81,8 @@ def spinner_input(prompt):
 
 # Main interactive loop
 def run_wizard():
-	print("=== Dynamic Spinner Wizard ===\n")
-	print("(Type 'exit' anytime to quit)\n")
+	print(Fore.GREEN + "=== Dynamic Color Spinner Wizard ===" + Style.RESET_ALL)
+	print(Fore.WHITE + "(Type 'exit' anytime to quit)\n")
 	
 	while True:
 		name = spinner_input("What is your name? ")
@@ -93,12 +97,12 @@ def run_wizard():
 		fav_lang = spinner_input("Favourite programming language? ")
 		if fav_lang.lower() == "exit": break
 	
-		print("\nProcessing your responses...\n")
+		print(Fore.YELLOW + "\nProcessing your responses...\n" + Style.RESET_ALL)
 		time.sleep(1.2)
 	
-		print(f"Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}.")
-		print(f"Your favourite language is {fav_lang}.")
-		print("Let's go again! (or type 'exit' to quit)\n")
+		print(Fore.GREEN + f"✅ Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}." + Style.RESET_ALL)
+		print(Fore.CYAN + f"✨ Your favourite language is {fav_lang}.")
+		print("n\👋Let's go again! (or type 'exit' to quit)\n")
 		
 	print("\nGoodbye!")
 
