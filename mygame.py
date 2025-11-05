@@ -73,7 +73,7 @@ def spinner(stop_event, pause_event, message, style, color):
 					sys.stdout.flush()
 					time.sleep(delay)
 			break
-		sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r') # clear line
+	sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r') # clear line
 
 # --- Reusable input with spinner ---
 def spinner_input(prompt, theme):					
@@ -102,6 +102,34 @@ def spinner_input(prompt, theme):
 	stop_event.set()
 	spinner_thread.join()
 	return user_input
+	
+# --- Animated intro ---
+def animated_intro(theme):
+	message = " Welcome to the Wizard! "
+	style = random.choice(SPINNER_STYLES)
+	color = random.choice(theme["spinner_colors"])
+	stop_event = threading.Event()
+	pause_event = threading.Event()
+	thread = threading.Thread(target=spinner, args=(stop_event, pause_event, message, style, color))
+	thread.start()
+	time.sleep(2) # Show animation for 2 seconds
+	stop_event.set()
+	thread.join()
+	print(theme["accent"] + "\nLet's get started!\n" + Style.RESET_ALL)
+
+# --- Animated outro ---
+def animated_outro(theme):
+	message = " Closing Wizard... "
+	style = random.choice(SPINNER_STYLES)
+	color = random.choice(theme["spinner_colors"])
+	stop_event = threading.Event()
+	pause_event = threading.Event()
+	thread = threading.Thread(target=spinner, args=(stop_event, pause_event, message, style, color))
+	thread.start()
+	time.sleep(2) # Show animation for 2 seconds
+	stop_event.set()
+	thread.join()
+	print(theme["accent"] + "\nGoodbye!\n" + Style.RESET_ALL)
 
 # --- Interactive theme selection ---
 def select_theme():
@@ -120,7 +148,7 @@ def select_theme():
 
 # --- Main wizard loop ---
 def run_wizard(theme):
-	print(theme["accent"] + "=== Dynamic Themed Spinner Wizard ===" + Style.RESET_ALL)
+	animated_intro(theme)
 	print(theme["text_color"] + "(Type 'exit' anytime to quit)\n")
 	
 	while True:
@@ -143,7 +171,7 @@ def run_wizard(theme):
 		print(f"✨ Your favourite language is {fav_lang}." + Style.RESET_ALL)
 		print(theme["accent"] + "\nLet's go again! (or type 'exit' to quit)\n" + Style.RESET_ALL)
 		
-	print(theme["accent"] + "\nGoodbye!" + Style.RESET_ALL)
+	animated_outro(theme)
 
 # --- Run program ---
 if __name__ == "__main__":
