@@ -93,7 +93,7 @@ def animated_text(text, color=Fore.WHITE, speed=0.03):
 # --- Animated sparkle effect for success/warning/info ---
 def animated_effect(text, effect_type="success"):
 	symbols = ["✦", "✧", "★", "☆", "✪", "✫"]
-	color = {"succes": Fore.GREEN, "warning": Fore.YELLOW, "info": Fore.CYAN}.get(effect_type, Fore.WHITE)
+	color = {"success": Fore.GREEN, "warning": Fore.YELLOW, "info": Fore.CYAN}.get(effect_type, Fore.WHITE)
 	for char in text:
 		sys.stdout.write(color + char + Style.RESET_ALL)
 		sys.stdout.flush()
@@ -118,12 +118,12 @@ def spinner_input(prompt_text, theme):
 	return user_input.strip().lower()
 
 # --- Timed mini challenge ---
-def timed_challenge(prompt, key, theme, timeout=5):
+def timed_challenge(prompt, key, theme, stats, timeout=5, stat_effect=None):
 	animated_text(prompt, color=theme["accent"])
 	stop_event = threading.Event()
 	style = random.choice(SPINNER_STYLES)
 	color = random.choice(theme["spinner_colors"])
-	t = threading.Thread(target=spinner, args=(stop_event, "Respond quickly! ", style, color))
+	t = threading.Thread(target=spinner, args=(stop_event, "React now! ", style, color))
 	t.start()
 	
 	start_time = time.time()
@@ -131,7 +131,7 @@ def timed_challenge(prompt, key, theme, timeout=5):
 	while time.time() - start_time < timeout:
 		if key_pressed():
 			pressed = read_key()
-			if pressed.lower()== key.lower():
+			if pressed.lower() == key.lower():
 				success = True
 				break
 	stop_event.set()
@@ -139,15 +139,26 @@ def timed_challenge(prompt, key, theme, timeout=5):
 	
 	if success:
 		animated_effect("✅ Success! You completed the challenge!", "success")
+		if stat_effect:
+			for k, v in stat_effect.get("success", {}).items():
+				stats[k] = max(0, stats.get(k, 0) + v)
 	else:
 		animated_effect("❌ Failed! Time ran out.", "warning")
+		if stat_effect:
+			for k, v in stat_effect.get("failure", {}).items():
+				stats[k] = max(0, stats.get(k, 0) + v)
 	return success
+
+# --- Display stats ---
+def show_stats(stats, theme):
+	stat_text = " | ".join([f"{k}: {v}" for k, v in stats.items()])
+	animated_text(f"Stats → {stat_text}", color=theme["text_color"])
 
 # --- Interactive theme selection ---
 def select_theme():
 	print("Choose a theme for your wizard:")
-	for i, theme_name in enumerate(THEMES.keys(), start=1):
-		print(f"  {i}. {theme_name.title()}")
+	for i, name in enumerate(THEMES.keys(), 1):
+		print(f"  {i}. {name.title()}")
 		
 	while True:
 		choice = input("Enter the number of your theme: ").strip()
@@ -160,34 +171,44 @@ def select_theme():
 	
 # --- Animated intro ---
 def animated_intro(theme):
-	animated_text(" Welcome to the Interactive Wizard! ", color=random.choice(theme["spinner_colors"]))
+	animated_text(" Welcome to the RPG Wizard! ", color=random.choice(theme["spinner_colors"]))
 	time.sleep(0.5) 
-	animated_text("Your choices will shape the story.\n", color=theme["accent"])
+	animated_text("Your stats will influence the adventure\n", color=theme["accent"])
 	
 # --- Animated outro ---
 def animated_outro(theme):
-	animated_text("\nClosing Wizard...", color=random.choice(theme["spinner_colors"]))
+	animated_text("\nEnding Adventure...", color=random.choice(theme["spinner_colors"]))
 	time.sleep(0.5)
-	animated_text("Goodbye!\n", color=theme["accent"])
+	animated_text("Thanks for playing!\n", color=theme["accent"])
 
 # --- Main wizard loop ---
 def run_wizard(theme):
 	animated_intro(theme)
-	print(theme["text_color"] + "(Type 'exit' anytime to quit)\n")
+	stats = {"Health": 10, "Agility": 5, "Luck": 3}
 	
 	while True:
-		name = spinner_input(" What is your name? ", theme)
-		if name.lower() == "exit": break
+		name = spinner_input(" Enter your character name? ", theme)
+		if name == "exit": break
 		
 		choice = spinner_input(f"Hello {name}! Choose a path: [forest/city] ", theme)
 		if choice == "forest":
 			animated_effect("Entering a forest...", "info")
-			timed_challenge("A wild deer appears! Press 'd' to dodge!", "d", theme, timeout=5)
+			timed_challenge(
+			"A wild boar charges! Press 'd' to dodge!",
+			"d", theme, stats,
+			stat_effect={"success":{"Agility":1}, "failure":{"Health":-3}}
+			)
 		elif choice == "city":
 			animated_effect("Entering the city...", "info")
-			timed_challenge("A drone is attacking! Press 'j' to jump!", "j", theme, timeout=5)
+			timed_challenge(
+			"A thief attacks! Press 'p' to parry!",
+			"p", theme, stats,
+			stat_effect={"success":{"Luck":1}, "failure":{"Health":-2}}
+			)
 		else:
-			animated_effect("⚠️ Invalid path.", "warning")	
+			animated_effect("⚠️ Invalid path.", "warning")
+		
+		show_stats(stats, theme)	
 			
 		cont = spinner_input("Do you want to play another story? [yes/no] ", theme)
 		if cont != "yes": break
