@@ -17,11 +17,22 @@ try:
 	import msvcrt
 	def key_pressed():
 		return msvcrt.kbhit()
+	def read_key():
+		return msvcrt.kbhit()
 except ImportError:
-	import select
+	import select, tty, termios
 	def key_pressed():	
 		dr, dw, de = select.select([sys.stdin], [], [], 0)
 		return bool(dr)
+	def read_key():
+		fd = sys.stdin.fileno()
+		old = termios.tcgetattr(fd)
+		try:
+			tty.setraw(fd)
+			ch = sys.stdin.read(1)
+		finally:
+			termios.tcsetattr(fd, termios.TCSADRAIN, old)
+		return ch
 
 # --- Spinner styles ---
 SPINNER_STYLES = [
@@ -106,6 +117,32 @@ def spinner_input(prompt_text, theme):
 	t.join()
 	return user_input.strip().lower()
 
+# --- Timed mini challenge ---
+def timed_challenge(prompt, key, theme, timeout=5):
+	animated_text(prompt, color=theme["accent"])
+	stop_event = threading.Event()
+	style = random.choice(SPINNER_STYLES)
+	color = random.choice(theme["spinner_colors"])
+	t = threading.Thread(target=spinner, args=(stop_event, "Respond quickly! ", style, color))
+	t.start()
+	
+	start_time = time.time()
+	success = False
+	while time.time() - start_time < timeout:
+		if key_pressed():
+			pressed = read_key()
+			if pressed.lower()== key.lower():
+				success = True
+				break
+	stop_event.set()
+	t.join()
+	
+	if success:
+		animated_effect("✅ Success! You completed the challenge!", "success")
+	else:
+		animated_effect("❌ Failed! Time ran out.", "warning")
+	return success
+
 # --- Interactive theme selection ---
 def select_theme():
 	print("Choose a theme for your wizard:")
@@ -142,23 +179,15 @@ def run_wizard(theme):
 		name = spinner_input(" What is your name? ", theme)
 		if name.lower() == "exit": break
 		
-		choice1 = spinner_input(f"Hello {name}! Choose a path: [forest/city] ", theme)
-		if choice1 == "forest":
-			animated_effect("You venture info a mysterious forest...", "info")
-			choice2 = spinner_input("You see a glowing tree. Do you approach it? [yes/no] ", theme)
-			if choice2 == "yes":
-				animated_effect("Magic sparkles surround you! You've unlocked a secret!", "success")
-			else:
-				animated_effect("You walk past safely, but feel something missed.", "warning")
-		elif choice1 == "city":
-			animated_effect("You enter a bustling cyberpunk city...", "info")
-			choice2 = spinner_input("A hacker offers you a deal. Accept? [yes/no] ", theme)
-			if choice2 == "yes":
-				animated_effect("You gain secret hacking skills! ", "success")
-			else:
-				animated_effect("You walk away, blending into the crowd.", "warning")
+		choice = spinner_input(f"Hello {name}! Choose a path: [forest/city] ", theme)
+		if choice == "forest":
+			animated_effect("Entering a forest...", "info")
+			timed_challenge("A wild deer appears! Press 'd' to dodge!", "d", theme, timeout=5)
+		elif choice == "city":
+			animated_effect("Entering the city...", "info")
+			timed_challenge("A drone is attacking! Press 'j' to jump!", "j", theme, timeout=5)
 		else:
-			animated_effect("Invalid path, the story pauses.", "warning")
+			animated_effect("⚠️ Invalid path.", "warning")	
 			
 		cont = spinner_input("Do you want to play another story? [yes/no] ", theme)
 		if cont != "yes": break
