@@ -62,60 +62,27 @@ THEMES = {
 }
 
 # --- Spinner thread function ---
-def spinner(stop_event,  message, style, color, typing_speed_getter):
-	spinner_cycle = itertools.cycle(style)
+def spinner(stop_event,  message, style, color):
+	spin = itertools.cycle(style)
 	while not stop_event.is_set():
-		speed = typing_speed_getter() # dynamically adjust spinner speed
-		sys.stdout.write('\r' + color + message + next(spinner_cycle) + Style.RESET_ALL)
+		sys.stdout.write('\r' + color + message + next(spin) + Style.RESET_ALL)
 		sys.stdout.flush()
-		time.sleep(max(0.05, 0.3 - speed)) # faster typing= faster spinner
+		time.sleep(0.1)
 	sys.stdout.write('\r' + ' ' * (len(message)+2) + '\r') # clear line
 
-class TypingSpeedMonitor:
-	def __init__(self):
-		self.last_time = time.time()
-		self.speed = 0.0
-		
-	def tick(self):
-		now = time.time()
-		interval = now - self.last_time
-		self.speed = 1.0 / max(interval, 0.01)
-		self.last_time = now
-		return self.speed
-		
-	def get_speed(self):
-		return self.speed
 
 # --- Animated text output ---
-def animated_text(text, color=Fore.WHITE, style=None, spinner_color=None, speed=0.03):
-	style = style or SPINNER_STYLES[0]
-	spinner_color = spinner_color or color
-	stop_event = threading.Event()
-	pause_event = threading.Event()
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "" ,style, spinner_color, lambda: 0))
-	spinner_thread.start()
-	
-	for char in text:
-		pause_event.set()
-		sys.stdout.write(color + char + Style.RESET_ALL)
+def animated_text(text, color=Fore.WHITE, speed=0.03):
+	for c in text:
+		sys.stdout.write(color + c + Style.RESET_ALL)
 		sys.stdout.flush()
 		time.sleep(speed)
-	stop_event.set()
-	spinner_thread.join()
 	print() # new line after text
 
 # --- Animated sparkle effect for success/warning/info ---
 def animated_effect(text, effect_type="success"):
 	symbols = ["✦", "✧", "★", "☆", "✪", "✫"]
-	if effect_type == "success":
-		color = Fore.GREEN
-	elif effect_type == "warning":
-		color = Fore.YELLOW
-	elif effect_type == "info":
-		color = Fore.CYAN
-	else:
-		color = Fore.WHITE
-	
+	color = {"succes": Fore.GREEN, "warning": Fore.YELLOW, "info": Fore.CYAN}.get(effect_type, Fore.WHITE)
 	for char in text:
 		sys.stdout.write(color + char + Style.RESET_ALL)
 		sys.stdout.flush()
@@ -132,32 +99,12 @@ def spinner_input(prompt_text, theme):
 	stop_event = threading.Event()
 	style = random.choice(SPINNER_STYLES)
 	color = random.choice(theme["spinner_colors"])
-	
-	typing_monitor = TypingSpeedMonitor()
-	
-	def get_speed():
-		return typing_monitor.get_speed()
-	
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Waiting for input... ", style, color, get_speed))
-	spinner_thread.start()
-	
-	user_input = ""
-	
-	# Pause spinner once user starts typing
-	while True:
-		if key_pressed():
-			c = sys.stdin.read(1) if not sys.platform.startswith('win') else msvcrt.getwch()
-			typing_monitor.tick()
-			if c == '\n' or c == '\r':
-				break
-			user_input += c
-			sys.stdout.write(c)
-			sys.stdout.flush()
-
-	# Stop the spinner
+	t = threading.Thread(target=spinner, args=(stop_event, "Waiting for input...", style, color))
+	t.start()
+	user_input = input()
 	stop_event.set()
-	spinner_thread.join()
-	return user_input
+	t.join()
+	return user_input.strip().lower()
 
 # --- Interactive theme selection ---
 def select_theme():
@@ -176,13 +123,13 @@ def select_theme():
 	
 # --- Animated intro ---
 def animated_intro(theme):
-	animated_text(" Welcome to the Wizard! ", color=random.choice(theme["spinner_colors"]))
+	animated_text(" Welcome to the Interactive Wizard! ", color=random.choice(theme["spinner_colors"]))
 	time.sleep(0.5) 
-	animated_text("Let's get started!\n", color=theme["accent"])
+	animated_text("Your choices will shape the story.\n", color=theme["accent"])
 	
 # --- Animated outro ---
 def animated_outro(theme):
-	animated_text("\n Closing Wizard...", color=random.choice(theme["spinner_colors"]))
+	animated_text("\nClosing Wizard...", color=random.choice(theme["spinner_colors"]))
 	time.sleep(0.5)
 	animated_text("Goodbye!\n", color=theme["accent"])
 
@@ -195,20 +142,26 @@ def run_wizard(theme):
 		name = spinner_input(" What is your name? ", theme)
 		if name.lower() == "exit": break
 		
-		age = spinner_input(" How old are you? ", theme)
-		if age.lower() == "exit": break
-		
-		hobby = spinner_input(" What is your favourite hobby? ", theme)
-		if hobby.lower() == "exit": break
-		
-		fav_lang = spinner_input(" Favourite programming language? ", theme)
-		if fav_lang.lower() == "exit": break
-	
-		print(theme["accent"] + "\nProcessing your responses...\n" + Style.RESET_ALL)
-		time.sleep(1.2)
-	
-		animated_effect(f"✅ Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}. Your favourite language is {fav_lang}", effect_type="success")
-		animated_effect("Let's go again! (or type 'exit' to quit)\n" , effect_type="info")
+		choice1 = spinner_input(f"Hello {name}! Choose a path: [forest/city] ", theme)
+		if choice1 == "forest":
+			animated_effect("You venture info a mysterious forest...", "info")
+			choice2 = spinner_input("You see a glowing tree. Do you approach it? [yes/no] ", theme)
+			if choice2 == "yes":
+				animated_effect("Magic sparkles surround you! You've unlocked a secret!", "success")
+			else:
+				animated_effect("You walk past safely, but feel something missed.", "warning")
+		elif choice1 == "city":
+			animated_effect("You enter a bustling cyberpunk city...", "info")
+			choice2 = spinner_input("A hacker offers you a deal. Accept? [yes/no] ", theme)
+			if choice2 == "yes":
+				animated_effect("You gain secret hacking skills! ", "success")
+			else:
+				animated_effect("You walk away, blending into the crowd.", "warning")
+		else:
+			animated_effect("Invalid path, the story pauses.", "warning")
+			
+		cont = spinner_input("Do you want to play another story? [yes/no] ", theme)
+		if cont != "yes": break
 		
 	animated_outro(theme)
 
