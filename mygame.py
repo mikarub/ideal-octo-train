@@ -3,13 +3,25 @@
 # author: miklenn
 # date: oktober 2025 (mostly based on interaction with ChatGPT 4 and 5)
 
+import sys
 import threading
 import itertools
 import time
-import sys
-import select, termios, tty
 import random
 from colorama import init, Fore, Style
+
+init(autoreset=True)
+
+# --- Cross-platform key detection ---
+try:
+	import msvcrt
+	def key_pressed():
+		return msvcrt.kbhit()
+except ImportError:
+	import select
+	def key_pressed():	
+		dr, dw, de = select.select([sys.stdin], [], [], 0)
+		return bool(dr)
 
 # --- Spinner styles ---
 SPINNER_STYLES = [
@@ -49,49 +61,56 @@ THEMES = {
     }
 }
 
-def key_pressed():
-	dr, dw, de = select.select([sys.stdin], [], [], 0)
-	return bool(dr)
-
 # --- Spinner thread function ---
-def spinner(stop_event, pause_event, message, style, color):
+def spinner(stop_event,  message, style, color, pause_event=None):
 	spinner_cycle = itertools.cycle(style)
-	fading = False
 	
 	while not stop_event.is_set():
-		if not pause_event.is_set():
-			sys.stdout.write('\r' + color + message + next(spinner_cycle) + Style.RESET_ALL)
-			sys.stdout.flush()
-			time.sleep(0.1)
-		else:
-			# Smooth fade-out
-			if not fading:
-				fading = True
-				for delay in [0.15, 0.25, 0.35, 0.45, 0.55]:
-					if stop_event.is_set(): break
-					sys.stdout.write('\r' + color + message + next(spinner_cycle) + Style.RESET_ALL)
-					sys.stdout.flush()
-					time.sleep(delay)
-			break
-	sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r') # clear line
+		if pause_event and pause_event.is_set():
+			time.sleep(0.05)
+			continue
+		sys.stdout.write('\r' + color + message + next(spinner_cycle) + Style.RESET_ALL)
+		sys.stdout.flush()
+		time.sleep(0.1)
+	sys.stdout.write('\r' + ' ' * (len(message)+2) + '\r') # clear line
+
+# --- Animated prompt typing ---
+def animated_prompt(prompt_text, theme):
+	style = random.choice(SPINNER_STYLES)
+	color = random.choice(theme["spinner_colors"])
+	stop_event = threading.Event()
+	pause_event = threading.Event()
+	
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "", style, color, pause_event))
+	spinner_thread.start()
+	
+	typed = ""
+	for char in prompt_text:
+		typed += char
+		pause_event.set() # Stop spinner while typing character
+		sys.stdout.write(theme["prompt_color"] + typed + Style.RESET_ALL)
+		sys.stdout.flush()
+		time.sleep(0.05) # typing speed
+		sys.stdout.write('\r')
+	stop_event.set()
+	spinner_thread.join()
+	sys.stdout.write(theme["prompt_color"] + typed + Style.RESET_ALL)
+	return typed
 
 # --- Reusable input with spinner ---
-def spinner_input(prompt, theme):					
+def spinner_input(prompt_text, theme):					
+	animated_prompt(prompt_text, theme)
 	stop_event = threading.Event()
 	pause_event = threading.Event()
 	
 	style = random.choice(SPINNER_STYLES)
 	color = random.choice(theme["spinner_colors"])
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, pause_event, "Waiting for input ", style, color))
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Waiting for input... ", style, color))
 	spinner_thread.start()
-
-	sys.stdout.write(theme["prompt_color"] + prompt + Style.RESET_ALL)
-	sys.stdout.flush()
 
 	# Pause spinner once user starts typing
 	while True:
 		if key_pressed():
-			pause_event.set() # Triggers fade-out
 			break
 		time.sleep(0.05)
 
@@ -102,34 +121,6 @@ def spinner_input(prompt, theme):
 	stop_event.set()
 	spinner_thread.join()
 	return user_input
-	
-# --- Animated intro ---
-def animated_intro(theme):
-	message = " Welcome to the Wizard! "
-	style = random.choice(SPINNER_STYLES)
-	color = random.choice(theme["spinner_colors"])
-	stop_event = threading.Event()
-	pause_event = threading.Event()
-	thread = threading.Thread(target=spinner, args=(stop_event, pause_event, message, style, color))
-	thread.start()
-	time.sleep(2) # Show animation for 2 seconds
-	stop_event.set()
-	thread.join()
-	print(theme["accent"] + "\nLet's get started!\n" + Style.RESET_ALL)
-
-# --- Animated outro ---
-def animated_outro(theme):
-	message = " Closing Wizard... "
-	style = random.choice(SPINNER_STYLES)
-	color = random.choice(theme["spinner_colors"])
-	stop_event = threading.Event()
-	pause_event = threading.Event()
-	thread = threading.Thread(target=spinner, args=(stop_event, pause_event, message, style, color))
-	thread.start()
-	time.sleep(2) # Show animation for 2 seconds
-	stop_event.set()
-	thread.join()
-	print(theme["accent"] + "\nGoodbye!\n" + Style.RESET_ALL)
 
 # --- Interactive theme selection ---
 def select_theme():
@@ -145,6 +136,32 @@ def select_theme():
 			return THEMES[selected]
 		else:
 			print("Invalid choice. Please enter a number from the list.")
+	
+# --- Animated intro ---
+def animated_intro(theme):
+	message = " Welcome to the Wizard! "
+	style = random.choice(SPINNER_STYLES)
+	color = random.choice(theme["spinner_colors"])
+	stop_event = threading.Event()
+	thread = threading.Thread(target=spinner, args=(stop_event, message, style, color))
+	thread.start()
+	time.sleep(2) # Show animation for 2 seconds
+	stop_event.set()
+	thread.join()
+	print(theme["accent"] + "\nLet's get started!\n" + Style.RESET_ALL)
+
+# --- Animated outro ---
+def animated_outro(theme):
+	message = " Closing Wizard... "
+	style = random.choice(SPINNER_STYLES)
+	color = random.choice(theme["spinner_colors"])
+	stop_event = threading.Event()
+	thread = threading.Thread(target=spinner, args=(stop_event, message, style, color))
+	thread.start()
+	time.sleep(2) # Show animation for 2 seconds
+	stop_event.set()
+	thread.join()
+	print(theme["accent"] + "\nGoodbye!\n" + Style.RESET_ALL)
 
 # --- Main wizard loop ---
 def run_wizard(theme):
@@ -177,4 +194,3 @@ def run_wizard(theme):
 if __name__ == "__main__":
 	chosen_theme = select_theme()
 	run_wizard(chosen_theme)
-
