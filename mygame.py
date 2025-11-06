@@ -62,17 +62,29 @@ THEMES = {
 }
 
 # --- Spinner thread function ---
-def spinner(stop_event,  message, style, color, pause_event=None):
+def spinner(stop_event,  message, style, color, typing_speed_getter):
 	spinner_cycle = itertools.cycle(style)
-	
 	while not stop_event.is_set():
-		if pause_event and pause_event.is_set():
-			time.sleep(0.05)
-			continue
+		speed = typing_speed_getter() # dynamically adjust spinner speed
 		sys.stdout.write('\r' + color + message + next(spinner_cycle) + Style.RESET_ALL)
 		sys.stdout.flush()
-		time.sleep(0.1)
+		time.sleep(max(0.05, 0.3 - speed)) # faster typing= faster spinner
 	sys.stdout.write('\r' + ' ' * (len(message)+2) + '\r') # clear line
+
+class TypingSpeedMonitor:
+	def __init__(self):
+		self.last_time = time.time()
+		self.speed = 0.0
+		
+	def tick(self):
+		now = time.time()
+		interval = now - self.last_time
+		self.speed = 1.0 / max(interval, 0.01)
+		self.last_time = now
+		return self.speed
+		
+	def get_speed(self):
+		return self.speed
 
 # --- Animated text output ---
 def animated_text(text, color=Fore.WHITE, style=None, spinner_color=None, speed=0.03):
@@ -80,7 +92,7 @@ def animated_text(text, color=Fore.WHITE, style=None, spinner_color=None, speed=
 	spinner_color = spinner_color or color
 	stop_event = threading.Event()
 	pause_event = threading.Event()
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "" ,style, spinner_color, pause_event))
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "" ,style, spinner_color, lambda: 0))
 	spinner_thread.start()
 	
 	for char in text:
@@ -120,17 +132,27 @@ def spinner_input(prompt_text, theme):
 	stop_event = threading.Event()
 	style = random.choice(SPINNER_STYLES)
 	color = random.choice(theme["spinner_colors"])
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Waiting for input... ", style, color))
+	
+	typing_monitor = TypingSpeedMonitor()
+	
+	def get_speed():
+		return typing_monitor.get_speed()
+	
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Waiting for input... ", style, color, get_speed))
 	spinner_thread.start()
-
+	
+	user_input = ""
+	
 	# Pause spinner once user starts typing
 	while True:
 		if key_pressed():
-			break
-		time.sleep(0.05)
-
-	# Then actually get input normally
-	user_input = input() # Standard input
+			c = sys.stdin.read(1) if not sys.platform.startswith('win') else msvcrt.getwch()
+			typing_monitor.tick()
+			if c == '\n' or c == '\r':
+				break
+			user_input += c
+			sys.stdout.write(c)
+			sys.stdout.flush()
 
 	# Stop the spinner
 	stop_event.set()
