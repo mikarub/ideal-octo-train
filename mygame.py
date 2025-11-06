@@ -92,6 +92,28 @@ def animated_text(text, color=Fore.WHITE, style=None, spinner_color=None, speed=
 	spinner_thread.join()
 	print() # new line after text
 
+# --- Animated sparkle effect for success/warning/info ---
+def animated_effect(text, effect_type="success"):
+	symbols = ["✦", "✧", "★", "☆", "✪", "✫"]
+	if effect_type == "success":
+		color = Fore.GREEN
+	elif effect_type == "warning":
+		color = Fore.YELLOW
+	elif effect_type == "info":
+		color = Fore.CYAN
+	else:
+		color = Fore.WHITE
+	
+	for char in text:
+		sys.stdout.write(color + char + Style.RESET_ALL)
+		sys.stdout.flush()
+		time.sleep(0.03)
+		if random.random() < 0.1:
+			sys.stdout.write(color + random.choice(symbols) + Style.RESET_ALL)
+			sys.stdout.flush()
+			time.sleep(0.02)
+	print()
+	
 # --- Reusable input with spinner ---
 def spinner_input(prompt_text, theme):					
 	animated_text(prompt_text, color=theme["prompt_color"])
@@ -163,9 +185,8 @@ def run_wizard(theme):
 		print(theme["accent"] + "\nProcessing your responses...\n" + Style.RESET_ALL)
 		time.sleep(1.2)
 	
-		print(theme["text_color"] + f"✅ Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}.")
-		print(f"✨ Your favourite language is {fav_lang}." + Style.RESET_ALL)
-		print(theme["accent"] + "\nLet's go again! (or type 'exit' to quit)\n" + Style.RESET_ALL)
+		animated_effect(f"✅ Pleased to meet you, {name}! You claim to be {age} years old while enjoying {hobby}. Your favourite language is {fav_lang}", effect_type="success")
+		animated_effect("Let's go again! (or type 'exit' to quit)\n" , effect_type="info")
 		
 	animated_outro(theme)
 
