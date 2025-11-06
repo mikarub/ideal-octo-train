@@ -74,35 +74,28 @@ def spinner(stop_event,  message, style, color, pause_event=None):
 		time.sleep(0.1)
 	sys.stdout.write('\r' + ' ' * (len(message)+2) + '\r') # clear line
 
-# --- Animated prompt typing ---
-def animated_prompt(prompt_text, theme):
-	style = random.choice(SPINNER_STYLES)
-	color = random.choice(theme["spinner_colors"])
+# --- Animated text output ---
+def animated_text(text, color=Fore.WHITE, style=None, spinner_color=None, speed=0.03):
+	style = style or SPINNER_STYLES[0]
+	spinner_color = spinner_color or color
 	stop_event = threading.Event()
 	pause_event = threading.Event()
-	
-	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "", style, color, pause_event))
+	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "" ,style, spinner_color, pause_event))
 	spinner_thread.start()
 	
-	typed = ""
-	for char in prompt_text:
-		typed += char
-		pause_event.set() # Stop spinner while typing character
-		sys.stdout.write(theme["prompt_color"] + typed + Style.RESET_ALL)
+	for char in text:
+		pause_event.set()
+		sys.stdout.write(color + char + Style.RESET_ALL)
 		sys.stdout.flush()
-		time.sleep(0.05) # typing speed
-		sys.stdout.write('\r')
+		time.sleep(speed)
 	stop_event.set()
 	spinner_thread.join()
-	sys.stdout.write(theme["prompt_color"] + typed + Style.RESET_ALL)
-	return typed
+	print() # new line after text
 
 # --- Reusable input with spinner ---
 def spinner_input(prompt_text, theme):					
-	animated_prompt(prompt_text, theme)
+	animated_text(prompt_text, color=theme["prompt_color"])
 	stop_event = threading.Event()
-	pause_event = threading.Event()
-	
 	style = random.choice(SPINNER_STYLES)
 	color = random.choice(theme["spinner_colors"])
 	spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Waiting for input... ", style, color))
@@ -139,29 +132,15 @@ def select_theme():
 	
 # --- Animated intro ---
 def animated_intro(theme):
-	message = " Welcome to the Wizard! "
-	style = random.choice(SPINNER_STYLES)
-	color = random.choice(theme["spinner_colors"])
-	stop_event = threading.Event()
-	thread = threading.Thread(target=spinner, args=(stop_event, message, style, color))
-	thread.start()
-	time.sleep(2) # Show animation for 2 seconds
-	stop_event.set()
-	thread.join()
-	print(theme["accent"] + "\nLet's get started!\n" + Style.RESET_ALL)
-
+	animated_text(" Welcome to the Wizard! ", color=random.choice(theme["spinner_colors"]))
+	time.sleep(0.5) 
+	animated_text("Let's get started!\n", color=theme["accent"])
+	
 # --- Animated outro ---
 def animated_outro(theme):
-	message = " Closing Wizard... "
-	style = random.choice(SPINNER_STYLES)
-	color = random.choice(theme["spinner_colors"])
-	stop_event = threading.Event()
-	thread = threading.Thread(target=spinner, args=(stop_event, message, style, color))
-	thread.start()
-	time.sleep(2) # Show animation for 2 seconds
-	stop_event.set()
-	thread.join()
-	print(theme["accent"] + "\nGoodbye!\n" + Style.RESET_ALL)
+	animated_text("\n Closing Wizard...", color=random.choice(theme["spinner_colors"]))
+	time.sleep(0.5)
+	animated_text("Goodbye!\n", color=theme["accent"])
 
 # --- Main wizard loop ---
 def run_wizard(theme):
