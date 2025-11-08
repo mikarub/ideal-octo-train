@@ -118,7 +118,7 @@ def spinner_input(prompt_text, theme):
 	return user_input.strip().lower()
 
 # --- Timed mini challenge ---
-def timed_challenge(prompt, key, theme, stats, timeout=5, stat_effect=None):
+def timed_challenge(prompt, key, theme, stats, inventory, timeout=5, effects=None, reward_item=None):
 	animated_text(prompt, color=theme["accent"])
 	stop_event = threading.Event()
 	style = random.choice(SPINNER_STYLES)
@@ -139,20 +139,26 @@ def timed_challenge(prompt, key, theme, stats, timeout=5, stat_effect=None):
 	
 	if success:
 		animated_effect("✅ Success! You completed the challenge!", "success")
-		if stat_effect:
-			for k, v in stat_effect.get("success", {}).items():
+		if effects and "success" in effects:
+			for k, v in effects["success"].items():
 				stats[k] = max(0, stats.get(k, 0) + v)
+		if reward_item:
+			inventory.append(reward_item)
+			animated_effect(f"You found an item: {reward_item}", "info")
 	else:
 		animated_effect("❌ Failed! Time ran out.", "warning")
-		if stat_effect:
-			for k, v in stat_effect.get("failure", {}).items():
+		if effects and "failure" in effects:
+			for k, v in effects["failure"].items():
 				stats[k] = max(0, stats.get(k, 0) + v)
-	return success
+	
 
 # --- Display stats ---
-def show_stats(stats, theme):
+def show_stats_inventory(stats, inventory, theme):
 	stat_text = " | ".join([f"{k}: {v}" for k, v in stats.items()])
+	inv_text = ", ".join(inventory) if inventory else "Empty"
+	
 	animated_text(f"Stats → {stat_text}", color=theme["text_color"])
+	animated_text(f"Inventory → {inv_text}", color=theme["accent"])
 
 # --- Interactive theme selection ---
 def select_theme():
@@ -185,6 +191,7 @@ def animated_outro(theme):
 def run_wizard(theme):
 	animated_intro(theme)
 	stats = {"Health": 10, "Agility": 5, "Luck": 3}
+	inventory = []
 	
 	while True:
 		name = spinner_input(" Enter your character name? ", theme)
@@ -195,20 +202,22 @@ def run_wizard(theme):
 			animated_effect("Entering a forest...", "info")
 			timed_challenge(
 			"A wild boar charges! Press 'd' to dodge!",
-			"d", theme, stats,
-			stat_effect={"success":{"Agility":1}, "failure":{"Health":-3}}
+			"d", theme, stats, inventory,
+			effects={"success":{"Agility":1}, "failure":{"Health":-3}},
+			reward_item="Healing herb"
 			)
 		elif choice == "city":
 			animated_effect("Entering the city...", "info")
 			timed_challenge(
 			"A thief attacks! Press 'p' to parry!",
-			"p", theme, stats,
-			stat_effect={"success":{"Luck":1}, "failure":{"Health":-2}}
+			"p", theme, stats, inventory,
+			effects={"success":{"Luck":1}, "failure":{"Health":-2}},
+			reward_item="Lucky Coin"
 			)
 		else:
 			animated_effect("⚠️ Invalid path.", "warning")
 		
-		show_stats(stats, theme)	
+		show_stats_inventory(stats, inventory, theme)	
 			
 		cont = spinner_input("Do you want to play another story? [yes/no] ", theme)
 		if cont != "yes": break
