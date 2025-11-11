@@ -160,6 +160,31 @@ def show_stats_inventory(stats, inventory, theme):
 	animated_text(f"Stats → {stat_text}", color=theme["text_color"])
 	animated_text(f"Inventory → {inv_text}", color=theme["accent"])
 
+# --- Combine items collected ---
+def combine_items(inventory, theme):
+	if len(inventory)<2:
+		animated_effect("You need at least 2 items to combine.", "warning")
+		return None
+	animated_text("Choose two items to combine by name:", color=theme["prompt_color"])
+	item1=spinner_input("First item: ", theme)
+	item2=spinner_input("Second item: ", theme)
+	if item1 in inventory and item2 in inventory:
+		# Define some special combinations
+		combinations={
+			("healing herb","lucky coin"):"Elixir of Fortune",
+			("boots","cloak"):"Stealth Gear"
+		}
+		key=(item1.lower(),item2.lower())
+		key_rev=(item2.lower(), item1.lower())
+		if key in combinations or key_rev in combinations:
+			new_item=combinations.get(key, combinations.get(key_rev))
+			inventory.remove(item1); inventory.remove(item2); inventory.append(new_item)
+			animated_effect(f"Combined items to create {new_item}!", "info")
+		else:
+			animated_effect("❌ Nothing happened. Items cannot be combined.", "warning")
+	else:
+		animated_effect("❌ One or both items not in inventory.", "warning")
+	
 # --- Interactive theme selection ---
 def select_theme():
 	print("Choose a theme for your wizard:")
@@ -177,7 +202,7 @@ def select_theme():
 	
 # --- Animated intro ---
 def animated_intro(theme):
-	animated_text(" Welcome to the RPG Wizard! ", color=random.choice(theme["spinner_colors"]))
+	animated_text(" Welcome to the RPG Wizard with Item Combinations! ", color=random.choice(theme["spinner_colors"]))
 	time.sleep(0.5) 
 	animated_text("Your stats will influence the adventure\n", color=theme["accent"])
 	
@@ -218,8 +243,12 @@ def run_wizard(theme):
 			animated_effect("⚠️ Invalid path.", "warning")
 		
 		show_stats_inventory(stats, inventory, theme)	
-			
-		cont = spinner_input("Do you want to play another story? [yes/no] ", theme)
+		
+		combine=spinner_input("Do you want to try combining items [yes/no] ", theme)
+		if combine=="yes":
+			combine_items(inventory, theme)
+		
+		cont = spinner_input("Do you want another adventure? [yes/no] ", theme)
 		if cont != "yes": break
 		
 	animated_outro(theme)
