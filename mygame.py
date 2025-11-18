@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # filename: mygame.py
 # author: miklenn
-# date: oktober 2025 (mostly based on interaction with ChatGPT 4 and 5)
+# date: oktober-november 2025 (mostly based on interaction with ChatGPT 4 and 5)
 
 import sys
 import threading
@@ -9,9 +9,39 @@ import itertools
 import time
 import random
 from colorama import init, Fore, Style
+import json
+import os
+
+SAVE_FILE = "savegame.json"
+
+def save_game(player, visited, choices, notes):
+	data = {
+		"player": player,
+		"visited": visited,
+		"choices": choices,
+		"notes": notes
+	}
+	with open(SAVE_FILE, "w") as f:
+		json.dump(data, f)
+	return True
+	
+def load_game():
+	if not os.path.exists(SAVE_FILE):
+		return None
+	try:
+		with open(SAVE_FILE, "r") as f:
+			data = json.load(f)
+		return (
+			data.get("player", {}),
+			data.get("visited", {}),
+			data.get("choices", {}),
+			data.get("notes", "")
+		)
+	except:
+		return None
 
 init(autoreset=True)
-
+	
 # --- Cross-platform key detection ---
 try:
 	import msvcrt
@@ -209,7 +239,7 @@ def combine_items(inventory, theme):
 # -----------------------------------
 def trigger_item_combination_event(new_item, inventory, theme):
 	"""
-	I certain special items are created, trigger secret events.
+	If certain special items are created, trigger secret events.
 	Keep this modular - add cases as needed.
 	"""
 	if new_item == "Elixir of Fortune":
@@ -246,6 +276,37 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 	- Mannequin Storage (mannequins shift when unseen)
 	- Heart Engine (final chamber): destroy the engine, freeing consciousness fragments
 	"""
+	# first ask if player wants to load previous game
+	print("Load previous game? (y/n)")
+	if input("> ").lower() == "y":
+		loaded = load_game()
+		if loaded:
+			player, visited, choices, notes = loaded
+			
+			if "items" in player:
+				for item in player["items"]:
+					if item not in inventory:
+						inventory.append(item)
+			if "hp" in player:
+				stats["Health"] = player["hp"]
+		else:
+			# Fresh start
+			player = {"hp": 100, "items": []}
+			visited = {}
+			choices = {}
+			notes = ""
+	else:
+		# Fresh start
+		player = {"hp": 100, "items": []}
+		visited = {}
+		choices = {}
+		notes = ""
+	"""
+	player["hp"] = stats.get("Health", player["hp"])
+	player["items"9 = inventory.copy()	
+	save_game(player, visited, choices, notes)
+	"""	
+		
 	animated_effect("You arrive at Hollowbridge Factory - night and smoke cling to the brickwork.", "info")
 	time.sleep(0.4)
 	animated_text("Rumours say the place breathes. The gata is ajar.", color=theme["prompt_color"])
@@ -263,6 +324,7 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 		animated_text("You stumble back, scraped by a rusted bracket. Your coat is torn.", color=theme["text_color"])
 	random_scatter_scary_lines(theme)
 	show_stats_inventory(stats, inventory, theme)
+	save_game(player, visited, choices, notes)
 	time.sleep(0.5)
 	
 	# Stage: Clockwork Mannequin Storage
@@ -291,6 +353,9 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 			animated_effect("You feel a pulse - not of blood, but of memory. Words: 'Return to the Heart...'", "info")
 			inventory.append("Whisper: 'Return to the Heart'")
 	show_stats_inventory(stats, inventory, theme)
+	player["hp"] = stats.get("Health", player["hp"])
+	player["items"] = inventory.copy()	
+	save_game(player, visited, choices, notes)
 	time.sleep(0.5)
 	
 	# Encourage combinations / puzzle solving before entering final chamber
@@ -303,6 +368,9 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 	if want_combine == "yes":
 		combine_items(inventory, theme)
 		show_stats_inventory(stats, inventory, theme)
+		player["hp"] = stats.get("Health", player["hp"])
+		player["items"] = inventory.copy()	
+		save_game(player, visited, choices, notes)
 		
 	# Stage: The Heart Engine (Final Chamber)
 	animated_text("\n→ The Heart Engine", color=theme["accent"])
@@ -317,7 +385,9 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 	
 	# Option: attempt to 'calm' the engine (riddle/puzzle) OR destroy it directly
 	choice_final = spinner_input("Do you attempt to quiet the engine (clever puzzle) or destroy it outright (force)? [quiet/destroy] ", theme).strip().lower()
-	
+	player["hp"] = stats.get("Health", player["hp"])
+	player["items"] = inventory.copy()	
+	save_game(player, visited, choices, notes)
 	if choice_final == "quiet":
 		# A puzzle-based approach: use clues(e.g. Scrap: '3' and Whisper) to solve a riddle
 		animated_text("You attempt to align the gears to a pattern that soothes the stolen echoes.", color=theme["text_color"])
@@ -358,6 +428,7 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 			animated_effect("A relic hums, lending you courage.", "info")
 			bonus += 1
 			
+		# auto_save()
 		# Multi-step attack: three rapid required key presses (simulate escalating difficulty)
 		animated_text("You will need to perform three synchronised actions to rupture the core.", color=theme["text_color"])
 		successes = 0
@@ -365,14 +436,17 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 		if timed_challenge("Sever the outer gears! Press 'r' now!", "r", theme, stats, inventory, timeout=4 - min(2, bonus),
 							effects={"success": {}, "failure": {"Health": -2}}):
 			successes += 1
+			
 		# Step 2: smash the conduit (press 'h')
 		if timed_challenge("Smash the conduit feeding the heart! Press 'h' now!", "h", theme, stats, inventory, timeout=4 - min(2, bonus),
 							effects={"success": {}, "failure": {"Health": -2}}):
 			successes += 1
+			
 		# Step 3: deliver the final blow (press 'k')
 		if timed_challenge("Deliver the final blow to the core! Press 'k' now!", "k", theme, stats, inventory, timeout=3 - min(1, bonus),
 							effects={"success": {}, "failure": {"Health": -4}}):
 			successes += 1
+			
 
 		# Evaluate outcome
 		if successes >= 2:
@@ -390,29 +464,37 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 			animated_effect("\nThe engine resists. Your blows ring hollow and you are thrown back by a pulse of dread.", "warning")
 			stats["Health"] = max(0, stats.get("Health", 0) - 5)
 			animated_text("You barely escape the chamber as machinery smashes and the factory convulses.", color=theme["text_color"])
+			player["hp"] = stats.get("Health", player["hp"])
+			player["items"] = inventory.copy()	
+			save_game(player, visited, choices, notes)
 			# If player failed, possibly they flee with partial knowledge/item
 			if random.random() < 0.5:
 				animated_effect("You snatch a fragment as  you flee - it hums with trapped memory.", "info")
 				inventory.append("Hollow Fragment")
 	# Final aftermath
+	# auto_save()
 	time.sleep(0.6)
 	animated_text("\nYou stumble out into the cold night. The factory behind you groans and then falls silent.", color=theme["text_color"])
 	animated_text("In the hush that follows, the city seems unchanged - but something in the fog feels different.", color=theme["text_color"])
 	show_stats_inventory(stats, inventory, theme)
+	player["hp"] = stats.get("Health", player["hp"])
+	player["items"] = inventory.copy()	
+	save_game(player, visited, choices, notes)
 	
 	# Post-quest consequence hook (modular)
 	if "Released Echoes" in inventory:
 		animated_effect("News of strange dreams begins to ripple through the city. You have altered fate.", "info")
 		
 	animated_effect("Quest Complete: The Lament of Hollowbridge Factory", "success")
-
+	
 # ------------------------------------
 # Main loop example to run this quest
 # ------------------------------------
 def main():
 	theme = THEMES["victorian"]
 	
-	# Starting the player state
+	# Starting the player stats
+	
 	stats = {"Health": 10, "Agility": 5, "Luck": 3}
 	inventory = []
 	
@@ -421,6 +503,7 @@ def main():
 	
 	# Simple loop: allow player to run the quest, inspect inventory or quit
 	while True:
+		
 		choice = spinner_input("\nChoose: [enter quest / inventory / exit] ", theme).strip().lower()
 		if choice == "exit":
 			animated_text("Farewell, wanderer.", color=theme["text_color"])
@@ -432,6 +515,7 @@ def main():
 			lament_of_hollowbridge_factory(stats, inventory, theme)
 		else:
 			animated_text("Command not recognised.", color=theme["text_color"])
+		
 
 # Run when executed
 if __name__ == "__main__":
