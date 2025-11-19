@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "saved_at": "2025-11-19T08:57:02.543632Z"
+  },
+  "player": {
+    "hp": 9,
+    "items": []
+  },
+  "visited": {},
+  "choices": {},
+  "notes": "",
+  "engine": {
+    "stats": {
+      "Health": 9,
+      "Agility": 5,
+      "Luck": 3
+    },
+    "inventory": []
+  }
+}

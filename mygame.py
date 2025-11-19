@@ -1,54 +1,157 @@
 #!/usr/bin/env python3
 # filename: mygame.py
-# author: miklenn
-# date: oktober-november 2025 (mostly based on interaction with ChatGPT 4 and 5)
+# author: miklenn (integrated & extended)
+# date: 2025-11 (integrated save system + slot UI)
 
 import sys
 import threading
 import itertools
 import time
 import random
-from colorama import init, Fore, Style
 import json
 import os
-
-SAVE_FILE = "savegame.json"
-
-def save_game(player, visited, choices, notes):
-	data = {
-		"player": player,
-		"visited": visited,
-		"choices": choices,
-		"notes": notes
-	}
-	with open(SAVE_FILE, "w") as f:
-		json.dump(data, f)
-	return True
-	
-def load_game():
-	if not os.path.exists(SAVE_FILE):
-		return None
-	try:
-		with open(SAVE_FILE, "r") as f:
-			data = json.load(f)
-		return (
-			data.get("player", {}),
-			data.get("visited", {}),
-			data.get("choices", {}),
-			data.get("notes", "")
-		)
-	except:
-		return None
+from datetime import datetime
+from colorama import init, Fore, Style
 
 init(autoreset=True)
+
+# ------------------------
+# Save system (slot-based
+# ------------------------
+SAVE_DIR = "saves"
+QUICK_SLOT = "quick"
+
+def ensure_save_dir():
+	if not os.path.exists(SAVE_DIR):
+		os.makedirs(SAVE_DIR)
+		
+def save_path(slot_name):
+	ensure_save_dir()
+	safe_name = str(slot_name)
+	return os.path.join(SAVE_DIR, f"slot_{safe_name}.json")
 	
-# --- Cross-platform key detection ---
+def backup_path(slot_name):
+	ensure_save_dir()
+	stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+	return os.path.join(SAVE_DIR, f"slot_{slot_name}.bak_{stamp}.json")
+	
+def save_game_slot(slot_name, player, visited, choices, notes, stats=None, inventory=None):
+	"""
+	Save full game state to a named slot.
+	If a file exists, create a backup copy first.
+	Stores metadatda (timestamp, playtime if provided).
+	"""
+	
+	path = save_path(slot_name)
+	# backup existing
+	if os.path.exists(path):
+		try:
+			os.replace(path, backup_path(slot_name))
+		except Exception:
+			# best-effort backup failure doesn't stop saving
+			pass
+			
+	data = {
+		"meta": {
+			"saved_at": datetime.utcnow().isoformat() + "Z"
+		},
+		"player": {
+			"hp": player.get("hp", stats.get("Health") if stats else player.get("hp", 100)),
+			"items": player.get("items", inventory if inventory is not None else player.get("items", []))
+		},
+		"visited": visited,
+		"choices": choices,
+		"notes": notes,
+		# store engine-level stats/inventory too for convenience
+		"engine": {
+			"stats": stats or {},
+			"inventory": inventory or []
+		}
+	}
+	with open(path, "w", encoding="utf-8") as f:
+		json.dump(data, f, indent=2, ensure_ascii=False)
+	print(f"\n Game saved to slot '{slot_name}'.\n")
+	return True
+	
+def load_game_slot(slot_name):
+	"""
+	Load a named slot. Returns loaded tuple or None on failure.
+	"""
+	path = save_path(slot_name)
+	if not os.path.exists(path):
+		print(f"\n⚠ Slot '{slot_name}' not found.\n")
+		return None
+	try:
+		with open(path, "r", encoding="utf-8") as f:
+			data = json.load(f)
+	except Exception as e:
+		print(f"\n❌ Failed to read slot '{slot_name}': {e}\n")
+		return None
+		
+		
+	player = data.get("player", {})
+	visited = data.get("visited", {})
+	choices = data.get("choices", {})
+	notes = data.get("notes", "")
+	engine = data.get("engine", {})
+	meta = data.get("meta", {})
+	return player, visited, choices, notes, engine, meta
+
+def list_save_slots():
+	ensure_save_dir()
+	files = sorted([f for f in os.listdir(SAVE_DIR) if f.startswith("slot_") and f.endswith(".json")])
+	if not files:
+		print("\n(No save slots found)\n")
+		return
+	print("\nAvailable save slots:")
+	for filename in files:
+		slot = filename[len("slot_"):-len(".json")]
+		path = os.path.join(SAVE_DIR, filename)
+		try:
+			with open(path, "r", encoding="utf-8") as f:
+				data= json.load(f)
+			saved_at = data.get("meta", {}).get("saved_at", "unknown")
+			engine_stats = data.get("engine", {}).get("stats", {})
+			health = engine_stats.get("Health", engine_stats.get("hp", "-"))
+			inv = data.get("player", {}).get("items", [])
+			inv_summary= ", ".join(inv[:3]) +  ("..." if len(inv) > 3 else "")
+			print(f" - {slot} (saved: {saved_at}) HP:{health} items:[{inv_summary}]")
+		except Exception:
+			print(f" - {slot} (corrupt or unreadable)")
+	print()
+
+def delete_save_slot(slot_name):
+	path = save_path(slot_name)
+	if not os.path.exists(path):
+		print(f"\n⚠ Slot '{slot_name}' does not exist.\n")
+		return False
+	try:
+		os.remove(path)
+	except Exception as e:
+		print(f"\n❌ Failed to delete slot '{slot_name}': {e}\n")
+		return False
+	print(f"\nSlot '{slot_name}' deleted.\n")
+	return True
+
+# ------------------------
+# Quick save/load helpers
+# ------------------------
+def quick_save(player, visited, choices, notes, stats=None, inventory=None):
+	return save_game_slot(QUICK_SLOT, player, visited, choices, notes, stats, inventory)
+
+def quick_load():
+	return load_game_slot(QUICK_SLOT)
+
+# ------------------------------------
+# Cross-platform key detection (fixed)
+# ------------------------------------
 try:
 	import msvcrt
 	def key_pressed():
 		return msvcrt.kbhit()
 	def read_key():
-		return msvcrt.kbhit()
+		ch = msvcrt.getwch()
+		return ch
 except ImportError:
 	import select, tty, termios
 	def key_pressed():	
@@ -146,7 +249,6 @@ def spinner_input(prompt_text, theme):
 def show_stats_inventory(stats, inventory, theme):
 	stat_text = " | ".join([f"{k}: {v}" for k, v in stats.items()])
 	inv_text = ", ".join(inventory) if inventory else "Empty"
-	
 	animated_text(f"Stats → {stat_text}", color=theme["text_color"])
 	animated_text(f"Inventory → {inv_text}", color=theme["accent"])
 
@@ -234,6 +336,7 @@ def combine_items(inventory, theme):
 	else:
 		animated_effect("The items do not combine into anything useful.", "warning")
 		return None
+		
 # -----------------------------------	
 # Hook for item-combination events (modular)
 # -----------------------------------
@@ -255,7 +358,6 @@ def trigger_item_combination_event(new_item, inventory, theme):
 # -------------------------
 # Random atmospheric scare
 # -------------------------
-
 def random_scatter_scary_lines(theme):
 	# Occassionally called to drop atmospheric one-liners
 	lines = [
@@ -269,47 +371,24 @@ def random_scatter_scary_lines(theme):
 # --------------------------------
 # The Lament Quest Implementation
 # --------------------------------
-def lament_of_hollowbridge_factory(stats, inventory, theme):
+def lament_of_hollowbridge_factory(stats, inventory, theme, save_state):
 	"""
 	Multi-stage Victorian-horror quest:
 	- Assembly Hall (conveyor activates)
 	- Mannequin Storage (mannequins shift when unseen)
 	- Heart Engine (final chamber): destroy the engine, freeing consciousness fragments
+	save_state is a dict with keys:
+		last_slot: None or slot name where autosave should go
+		visited, choices, notes (mutable dicts/strings)
 	"""
-	# first ask if player wants to load previous game
-	print("Load previous game? (y/n)")
-	if input("> ").lower() == "y":
-		loaded = load_game()
-		if loaded:
-			player, visited, choices, notes = loaded
-			
-			if "items" in player:
-				for item in player["items"]:
-					if item not in inventory:
-						inventory.append(item)
-			if "hp" in player:
-				stats["Health"] = player["hp"]
-		else:
-			# Fresh start
-			player = {"hp": 100, "items": []}
-			visited = {}
-			choices = {}
-			notes = ""
-	else:
-		# Fresh start
-		player = {"hp": 100, "items": []}
-		visited = {}
-		choices = {}
-		notes = ""
-	"""
-	player["hp"] = stats.get("Health", player["hp"])
-	player["items"9 = inventory.copy()	
-	save_game(player, visited, choices, notes)
-	"""	
-		
+	
+	visited = save_state.get("visited", {})
+	choices = save_state.get("choices", {})
+	notes = save_state.get("notes", {})
+	
 	animated_effect("You arrive at Hollowbridge Factory - night and smoke cling to the brickwork.", "info")
 	time.sleep(0.4)
-	animated_text("Rumours say the place breathes. The gata is ajar.", color=theme["prompt_color"])
+	animated_text("Rumours say the place breathes. The gate is ajar.", color=theme["prompt_color"])
 	time.sleep(0.3)
 	
 	# Stage: Assembly Hall
@@ -324,7 +403,14 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 		animated_text("You stumble back, scraped by a rusted bracket. Your coat is torn.", color=theme["text_color"])
 	random_scatter_scary_lines(theme)
 	show_stats_inventory(stats, inventory, theme)
-	save_game(player, visited, choices, notes)
+	
+	# autosave (to last_slot if set, else quick)
+	player = {"hp": stats.get("Health", 10), "items": inventory.copy()}
+	if save_state.get("last_slot"):
+		save_game_slot(save_state["last_slot"], player, visited, choices, notes, stats, inventory)
+	else:
+		quick_save(player, visited, choices, notes, stats, inventory)
+		
 	time.sleep(0.5)
 	
 	# Stage: Clockwork Mannequin Storage
@@ -353,9 +439,14 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 			animated_effect("You feel a pulse - not of blood, but of memory. Words: 'Return to the Heart...'", "info")
 			inventory.append("Whisper: 'Return to the Heart'")
 	show_stats_inventory(stats, inventory, theme)
-	player["hp"] = stats.get("Health", player["hp"])
-	player["items"] = inventory.copy()	
-	save_game(player, visited, choices, notes)
+	
+	# autosave
+	player = {"hp": stats.get("Health", 10), "items": inventory.copy()}
+	if save_state.get("last_slot"):
+		save_game_slot(save_state["last_slot"], player, visited, choices, notes, stats, inventory)
+	else:
+		quick_save(player, visited, choices, notes, stats, inventory)
+	
 	time.sleep(0.5)
 	
 	# Encourage combinations / puzzle solving before entering final chamber
@@ -368,9 +459,12 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 	if want_combine == "yes":
 		combine_items(inventory, theme)
 		show_stats_inventory(stats, inventory, theme)
-		player["hp"] = stats.get("Health", player["hp"])
-		player["items"] = inventory.copy()	
-		save_game(player, visited, choices, notes)
+		# autosave after combining
+		player ={"hp": stats.get("Health", 10), "items": inventory.copy()}
+		if save_state.get("last_slot"):
+			save_game_slot(save_state["last_slot"], player, visited, choices, notes, stats, inventory)
+		else:
+			quick_save(player, visited, choices, notes, stats, inventory)
 		
 	# Stage: The Heart Engine (Final Chamber)
 	animated_text("\n→ The Heart Engine", color=theme["accent"])
@@ -385,9 +479,14 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 	
 	# Option: attempt to 'calm' the engine (riddle/puzzle) OR destroy it directly
 	choice_final = spinner_input("Do you attempt to quiet the engine (clever puzzle) or destroy it outright (force)? [quiet/destroy] ", theme).strip().lower()
-	player["hp"] = stats.get("Health", player["hp"])
-	player["items"] = inventory.copy()	
-	save_game(player, visited, choices, notes)
+	
+	# autosave before the final choice
+	player ={"hp": stats.get("Health", 10), "items": inventory.copy()}
+	if save_state.get("last_slot"):
+		save_game_slot(save_state["last_slot"], player, visited, choices, notes, stats, inventory)
+	else:
+		quick_save(player, visited, choices, notes, stats, inventory)
+	
 	if choice_final == "quiet":
 		# A puzzle-based approach: use clues(e.g. Scrap: '3' and Whisper) to solve a riddle
 		animated_text("You attempt to align the gears to a pattern that soothes the stolen echoes.", color=theme["text_color"])
@@ -428,7 +527,6 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 			animated_effect("A relic hums, lending you courage.", "info")
 			bonus += 1
 			
-		# auto_save()
 		# Multi-step attack: three rapid required key presses (simulate escalating difficulty)
 		animated_text("You will need to perform three synchronised actions to rupture the core.", color=theme["text_color"])
 		successes = 0
@@ -463,30 +561,122 @@ def lament_of_hollowbridge_factory(stats, inventory, theme):
 		else:
 			animated_effect("\nThe engine resists. Your blows ring hollow and you are thrown back by a pulse of dread.", "warning")
 			stats["Health"] = max(0, stats.get("Health", 0) - 5)
-			animated_text("You barely escape the chamber as machinery smashes and the factory convulses.", color=theme["text_color"])
-			player["hp"] = stats.get("Health", player["hp"])
-			player["items"] = inventory.copy()	
-			save_game(player, visited, choices, notes)
+			animated_text("You barely escape the chamber as machinery smashes and the factory convulses.", color=theme["text_color"])			
 			# If player failed, possibly they flee with partial knowledge/item
 			if random.random() < 0.5:
 				animated_effect("You snatch a fragment as  you flee - it hums with trapped memory.", "info")
 				inventory.append("Hollow Fragment")
-	# Final aftermath
-	# auto_save()
+				
+	# Final aftermath	
 	time.sleep(0.6)
 	animated_text("\nYou stumble out into the cold night. The factory behind you groans and then falls silent.", color=theme["text_color"])
 	animated_text("In the hush that follows, the city seems unchanged - but something in the fog feels different.", color=theme["text_color"])
 	show_stats_inventory(stats, inventory, theme)
-	player["hp"] = stats.get("Health", player["hp"])
-	player["items"] = inventory.copy()	
-	save_game(player, visited, choices, notes)
+	
+	# autosave final state
+	player ={"hp": stats.get("Health", 10), "items": inventory.copy()}
+	if save_state.get("last_slot"):
+		save_game_slot(save_state["last_slot"], player, visited, choices, notes, stats, inventory)
+	else:
+		quick_save(player, visited, choices, notes, stats, inventory)
 	
 	# Post-quest consequence hook (modular)
 	if "Released Echoes" in inventory:
 		animated_effect("News of strange dreams begins to ripple through the city. You have altered fate.", "info")
 		
 	animated_effect("Quest Complete: The Lament of Hollowbridge Factory", "success")
+	# store save_state back (mutable dict used by caller
+
+# --------------------------
+# Save Menu UI (text-based)
+# --------------------------
+def save_menu(player, stats, inventory, save_state):
+	"""
+	Presents a save/load/delete UI. Commands:
+		save <name>		- save to named slot
+		load <name>		- load named slot
+		delete <name>	- delete slot
+		list			- list slots
+		quicksave		- quick save
+		quickload		- quick load
+		setslot <name>	- set current last_slot for autosave
+		clearslot		- unset autosave slot (autosaves to quick)
+		exit			- return to game
+	"""
+	theme = THEMES["victorian"]
+	animated_text("\n--- Save Menu ---", color=theme["accent"])
+	animated_text("Commands: save <name>, load <name>, delete <name>, list, quicksave, quickload, setslot <name>, clearslot, exit", color=theme["text_color"])
 	
+	while True:
+		cmd = spinner_input("\nEnter save command: ", theme).strip()
+		if not cmd:
+			continue
+		parts = cmd.split()
+		verb = parts[0].lower()
+		if verb == "exit":
+			break
+		elif verb == "list":
+			list_save_slots()
+		elif verb == "save" and len(parts) > 2:
+			slot = "_".join(parts[1:])
+			player_payload = {"hp": stats.get("Health", 10), "items": inventory.copy()}
+			save_game_slot(slot, player_payload, save_state.get("visited", {}), save_state.get("choices", {}), save_state.get("notes", ""), stats, inventory)
+			# set this as last_slot automatically
+			save_state["last_slot"] = slot
+		elif verb == "load" and len(parts) >= 2:
+			slot = "_".join(parts[1:])
+			loaded = load_game_slot(slot)
+			if loaded:
+				player_data, visited, choices, notes, engine, meta = loaded
+				# apply to engine state
+				stats_from_engine = engine.get("stats", {})
+				inventory_from_engine = engine.get("inventory", player_data.get("items", []))
+				stats.update(stats_from_engine or {})
+				# merge inventory: ensure no duplicates
+				inventory.clear()
+				inventory.extend(inventory_from_engine)
+				# set player hp
+				player_hp = player_data.get("hp", stats_get("Health", 10))
+				stats["Health"] = player_hp
+				save_state["visited"] = visited
+				save_state["choices"] = choices
+				save_state["notes"] = notes
+				save_state["last_slot"] = slot
+				animated_effect(f"Loaded slot '{slot}'.", "warning")
+			else:
+				animated_effect(f"Failed to load slot '{slot}'.", "warning")
+		elif verb == "delete" and len(parts) >= 2:
+			slot = "_".join(parts[1:])
+			delete_save_slot(slot)
+		elif verb == "quicksave":
+			player_payload = {"hp": stats.get("Health", 10), "items": inventory.copy()}
+			quick_save(player_payload, save_state.get("visited", {}), save_state.get("choices", {}), save_state.get("notes", ""), stats, inventory)
+		elif verb == "quickload":
+			loaded = quick_load()
+			if loaded:
+				player_data, visited, choices, notes, engine, meta = loaded
+				stats_from_engine = engine.get("stats", {})
+				inventory_from_engine = engine.get("inventory", player_data.get("items", []))
+				stats.update(stats_from_engine or {})
+				inventory.clear()
+				inventory.extend(inventory_from_engine)
+				stats["Health"] = player_data.get("hp", stats.get("Health", 10))
+				save_state["visited"] = visited
+				save_state["choices"] = choices
+				save_state["notes"] = notes
+				animated_effect("Quickload successful.", "info")
+			else:
+				animated_effect("No quicksave found.", "warning")
+		elif verb == "setslot" and len(parts) >= 2:
+			slot = "_".join(parts[1:])
+			save_state["last_slot"] = slot
+			animated_effect(f"Autosave slot set to '{slot}'. Autosaves will go to this slot.", "info")
+		elif verb == "clearslot":
+			save_state["last_slot"] = None
+			animated_effect("Autosave slot cleared. Autosaves will go to quick slot.", "info")
+		else:
+			animated_text("Unknown command. Try: save/load/delete/list/quicksave/quickload/setslot/clearslot/exit", color=theme["text_color"])
+					
 # ------------------------------------
 # Main loop example to run this quest
 # ------------------------------------
@@ -494,29 +684,39 @@ def main():
 	theme = THEMES["victorian"]
 	
 	# Starting the player stats
-	
 	stats = {"Health": 10, "Agility": 5, "Luck": 3}
 	inventory = []
 	
+	# Save_state container used across calls
+	save_state = {
+		"last_slot": None,
+		"visited": {},
+		"choices": {},
+		"notes": ""
+	}
+	
 	animated_text("=== RPG: Hollowbridge Prologue ===\n", color=theme["accent"])
 	animated_text("Type 'exit' at any prompt to quit the demo.\n", color=theme["text_color"])
+	animated_text("Type 'save' at the main menu to open the Save Menu.", color=theme["text_color"])
 	
 	# Simple loop: allow player to run the quest, inspect inventory or quit
 	while True:
 		
-		choice = spinner_input("\nChoose: [enter quest / inventory / exit] ", theme).strip().lower()
+		choice = spinner_input("\nChoose: [enter quest / inventory / save / exit] ", theme).strip().lower()
 		if choice == "exit":
 			animated_text("Farewell, wanderer.", color=theme["text_color"])
 			break
 		elif choice in ("inventory", "inv"):
 			show_stats_inventory(stats, inventory, theme)
 			continue
+		elif choice in ("save"):
+			save_menu({"hp": stats.get("Health", 10), "items": inventory.copy()}, stats, inventory, save_state)
+			continue
 		elif choice in ("enter quest", "quest", "enter"):
-			lament_of_hollowbridge_factory(stats, inventory, theme)
+			lament_of_hollowbridge_factory(stats, inventory, theme, save_state)
 		else:
 			animated_text("Command not recognised.", color=theme["text_color"])
 		
-
 # Run when executed
 if __name__ == "__main__":
 	main()
