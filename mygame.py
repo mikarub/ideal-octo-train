@@ -53,7 +53,8 @@ def save_game_slot(slot_name, player, visited, choices, notes, stats=None, inven
 			
 	data = {
 		"meta": {
-			"saved_at": datetime.utcnow().isoformat() + "Z"
+			"saved_at": datetime.utcnow().isoformat() + "Z",
+			"slot_name": slot_name
 		},
 		"player": {
 			"hp": player.get("hp", stats.get("Health") if stats else player.get("hp", 100)),
@@ -97,7 +98,8 @@ def load_game_slot(slot_name):
 	meta = data.get("meta", {})
 	return player, visited, choices, notes, engine, meta
 
-def list_save_slots():
+def list_save_slots_print():
+	""" Prints available slots (human readable) """
 	ensure_save_dir()
 	files = sorted([f for f in os.listdir(SAVE_DIR) if f.startswith("slot_") and f.endswith(".json")])
 	if not files:
@@ -119,6 +121,13 @@ def list_save_slots():
 		except Exception:
 			print(f" - {slot} (corrupt or unreadable)")
 	print()
+
+def list_save_slots_return():
+	""" Returns a sorted list of slot names (strings) without 'slot_' prefix. """
+	ensure_save_dir()
+	files = sorted([f for f in os.listdir(SAVE_DIR) if f.startswith("slot_") and f.endswith(".json")])
+	slots = [f[len("slot_"):-len(".json")] for f in files]
+	return slots
 
 def delete_save_slot(slot_name):
 	path = save_path(slot_name)
@@ -585,27 +594,91 @@ def lament_of_hollowbridge_factory(stats, inventory, theme, save_state):
 		animated_effect("News of strange dreams begins to ripple through the city. You have altered fate.", "info")
 		
 	animated_effect("Quest Complete: The Lament of Hollowbridge Factory", "success")
-	# store save_state back (mutable dict used by caller
+
+# ------------------------------
+# Numbered-slot chooser helpers
+# ------------------------------
+def choose_slot_for_load():
+	"""
+	Shows a numbered list of existing slots and returns the chosen slot name (string),
+	or None if cancelled.
+	"""
+	slots = list_save_slots_return()
+	if not slots:
+		print("\n(No slots found)\n")
+		return None
+		
+	print("\n--- Choose a slot to LOAD ---")
+	for i, s in enumerate(slots, start=1):
+		print(f"[{i}] {s}")
+	print("[B] Back")
+	
+	while True:
+		choice = input("Choose slot number to load (or B): ").strip().lower()
+		if choice in ("b", "back"):
+			return None
+		if choice.isdigit():
+			idx = int(choice) - 1
+			if 0 <= idx < len(slots):
+				return slots[idx]
+		print("Invalid choice. Try again.")
+		
+def choose_slot_for_save():
+	"""
+	Shows existing slots numbered and lets the player pick one to overwrite,
+	or create a new named slot. Returns final slot name or None.
+	"""
+	slots = list_save_slots_return()
+	print("\n--- Choose a slot to SAVE ---")
+	if slots:
+		for i, s in enumerate(slots, start=1):
+			print(f"[{i}] {s}")
+	else:
+		print("(No existing slots)")
+	
+	print("[N] New slot")
+	print("[B] Back")
+	
+	while True:
+		choice = input("Choose slot number to overwrite, N to create new or B to cancel: ").strip().lower()
+		if choice in ("b", "back"):
+			return None
+		if choice in ("n", "new"):
+			name = input("Enter a name for the new slot (no spaces recommended): ").strip()
+			if name:
+				return name
+			else:
+				print("Invalid name.")
+		elif choice.isdigit():
+			idx = int(choice) - 1
+			if 0 <= idx < len(slots):
+				return slots[idx]
+			else:
+				print("Invalid slot number.")
+		else:
+			print("Invalid option.")
+				
 
 # --------------------------
 # Save Menu UI (text-based)
 # --------------------------
 def save_menu(player, stats, inventory, save_state):
 	"""
-	Presents a save/load/delete UI. Commands:
-		save <name>		- save to named slot
-		load <name>		- load named slot
-		delete <name>	- delete slot
-		list			- list slots
-		quicksave		- quick save
-		quickload		- quick load
+	Presents a save/load/delete UI with numbered slot selection. 
+	Commands within menu:
+		list			- prints all slots
+		save			- open numbered chooser to save
+		load			- open numbered chooser to load
+		delete			- open numbered chooser to delete
+		quicksave		- save to quick slot
+		quickload		- load quick slot
 		setslot <name>	- set current last_slot for autosave
 		clearslot		- unset autosave slot (autosaves to quick)
 		exit			- return to game
 	"""
 	theme = THEMES["victorian"]
 	animated_text("\n--- Save Menu ---", color=theme["accent"])
-	animated_text("Commands: save <name>, load <name>, delete <name>, list, quicksave, quickload, setslot <name>, clearslot, exit", color=theme["text_color"])
+	animated_text("Commands: list | save | load | delete | quicksave | quickload | setslot <name> | clearslot | exit", color=theme["text_color"])
 	
 	while True:
 		cmd = spinner_input("\nEnter save command: ", theme).strip()
@@ -613,41 +686,45 @@ def save_menu(player, stats, inventory, save_state):
 			continue
 		parts = cmd.split()
 		verb = parts[0].lower()
+		
 		if verb == "exit":
 			break
 		elif verb == "list":
-			list_save_slots()
-		elif verb == "save" and len(parts) > 2:
-			slot = "_".join(parts[1:])
-			player_payload = {"hp": stats.get("Health", 10), "items": inventory.copy()}
-			save_game_slot(slot, player_payload, save_state.get("visited", {}), save_state.get("choices", {}), save_state.get("notes", ""), stats, inventory)
-			# set this as last_slot automatically
-			save_state["last_slot"] = slot
-		elif verb == "load" and len(parts) >= 2:
-			slot = "_".join(parts[1:])
-			loaded = load_game_slot(slot)
-			if loaded:
-				player_data, visited, choices, notes, engine, meta = loaded
-				# apply to engine state
-				stats_from_engine = engine.get("stats", {})
-				inventory_from_engine = engine.get("inventory", player_data.get("items", []))
-				stats.update(stats_from_engine or {})
-				# merge inventory: ensure no duplicates
-				inventory.clear()
-				inventory.extend(inventory_from_engine)
-				# set player hp
-				player_hp = player_data.get("hp", stats_get("Health", 10))
-				stats["Health"] = player_hp
-				save_state["visited"] = visited
-				save_state["choices"] = choices
-				save_state["notes"] = notes
+			list_save_slots_print()
+		elif verb == "save":
+			slot = choose_slot_for_save()
+			if slot:
+				player_payload = {"hp": stats.get("Health", 10), "items": inventory.copy()}
+				save_game_slot(slot, player_payload, save_state.get("visited", {}), save_state.get("choices", {}), save_state.get("notes", ""), stats, inventory)
+				# set this as last_slot automatically
 				save_state["last_slot"] = slot
-				animated_effect(f"Loaded slot '{slot}'.", "warning")
-			else:
-				animated_effect(f"Failed to load slot '{slot}'.", "warning")
-		elif verb == "delete" and len(parts) >= 2:
-			slot = "_".join(parts[1:])
-			delete_save_slot(slot)
+		elif verb == "load":
+			slot = choose_slot_for_load()
+			if slot:
+				loaded = load_game_slot(slot)
+				if loaded:
+					player_data, visited, choices, notes, engine, meta = loaded
+					# apply to engine state
+					stats_from_engine = engine.get("stats", {})
+					inventory_from_engine = engine.get("inventory", player_data.get("items", []))
+					if stats_from_engine:
+						stats.update(stats_from_engine)
+					inventory.clear()
+					inventory.extend(inventory_from_engine)
+					stats["Health"] = player_data.get("hp", stats.get("Health", 10))
+					save_state["visited"] = visited
+					save_state["choices"] = choices
+					save_state["notes"] = notes
+					save_state["last_slot"] = slot
+					animated_effect(f"Loaded slot '{slot}'.", "info")
+				else:
+					animated_effect(f"Failed to load slot '{slot}'.", "warning")
+		elif verb == "delete":
+			slot = choose_slot_for_load()
+			if slot:
+				confirm = input(f"Delete slot '{slot}'? Type 'YES' to confirm: ").strip()
+				if confirm == "YES":
+					delete_save_slot(slot)
 		elif verb == "quicksave":
 			player_payload = {"hp": stats.get("Health", 10), "items": inventory.copy()}
 			quick_save(player_payload, save_state.get("visited", {}), save_state.get("choices", {}), save_state.get("notes", ""), stats, inventory)
@@ -657,7 +734,8 @@ def save_menu(player, stats, inventory, save_state):
 				player_data, visited, choices, notes, engine, meta = loaded
 				stats_from_engine = engine.get("stats", {})
 				inventory_from_engine = engine.get("inventory", player_data.get("items", []))
-				stats.update(stats_from_engine or {})
+				if stats_from_engine:
+					stats.update(stats_from_engine)
 				inventory.clear()
 				inventory.extend(inventory_from_engine)
 				stats["Health"] = player_data.get("hp", stats.get("Health", 10))
@@ -675,7 +753,7 @@ def save_menu(player, stats, inventory, save_state):
 			save_state["last_slot"] = None
 			animated_effect("Autosave slot cleared. Autosaves will go to quick slot.", "info")
 		else:
-			animated_text("Unknown command. Try: save/load/delete/list/quicksave/quickload/setslot/clearslot/exit", color=theme["text_color"])
+			animated_text("Unknown command. Try: list/save/load/delete/quicksave/quickload/setslot/clearslot/exit", color=theme["text_color"])
 					
 # ------------------------------------
 # Main loop example to run this quest
