@@ -1,17 +1,21 @@
 {
   "meta": {
-    "saved_at": "2025-11-19T10:30:29.463935Z",
-    "slot_name": "quick"
+    "saved_at": "2025-11-19T12:54:01.798175Z",
+    "slot_name": "quick.bak_20251119T103057Z"
   },
   "player": {
-    "hp": 9,
+    "hp": 8,
     "items": [
       "Scrap: '3'",
       "Whisper: 'Return to the Heart'",
       "Silenced Core Fragment",
       "Silenced Core Fragment",
       "Scrap: '3'",
-      "Whisper: 'Return to the Heart'"
+      "Whisper: 'Return to the Heart'",
+      "Whisper: 'Return to the Heart'",
+      "Silenced Core Fragment",
+      "Silenced Core Fragment",
+      "Released Echoes"
     ]
   },
   "visited": {},
@@ -19,9 +23,9 @@
   "notes": "",
   "engine": {
     "stats": {
-      "Health": 9,
-      "Agility": 7,
-      "Luck": 7
+      "Health": 8,
+      "Agility": 9,
+      "Luck": 12
     },
     "inventory": [
       "Scrap: '3'",
@@ -29,7 +33,11 @@
       "Silenced Core Fragment",
       "Silenced Core Fragment",
       "Scrap: '3'",
-      "Whisper: 'Return to the Heart'"
+      "Whisper: 'Return to the Heart'",
+      "Whisper: 'Return to the Heart'",
+      "Silenced Core Fragment",
+      "Silenced Core Fragment",
+      "Released Echoes"
     ]
   }
 }

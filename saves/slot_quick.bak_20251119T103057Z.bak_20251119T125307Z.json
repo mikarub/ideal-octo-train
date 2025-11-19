@@ -1,7 +1,7 @@
 {
   "meta": {
-    "saved_at": "2025-11-19T12:54:11.094017Z",
-    "slot_name": "quick"
+    "saved_at": "2025-11-19T12:52:39.740094Z",
+    "slot_name": "quick.bak_20251119T103057Z"
   },
   "player": {
     "hp": 8,
@@ -14,8 +14,7 @@
       "Whisper: 'Return to the Heart'",
       "Whisper: 'Return to the Heart'",
       "Silenced Core Fragment",
-      "Silenced Core Fragment",
-      "Released Echoes"
+      "Silenced Core Fragment"
     ]
   },
   "visited": {},
@@ -24,8 +23,8 @@
   "engine": {
     "stats": {
       "Health": 8,
-      "Agility": 9,
-      "Luck": 12
+      "Agility": 7,
+      "Luck": 10
     },
     "inventory": [
       "Scrap: '3'",
@@ -36,8 +35,7 @@
       "Whisper: 'Return to the Heart'",
       "Whisper: 'Return to the Heart'",
       "Silenced Core Fragment",
-      "Silenced Core Fragment",
-      "Released Echoes"
+      "Silenced Core Fragment"
     ]
   }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # filename: mygame.py
 # author: miklenn (integrated & extended)
-# date: 2025-11 (integrated save system + slot UI)
+# date: 2025-11 (integrated save system + numbered slot UI + cleaned_effect)
 
 import sys
 import threading
@@ -221,19 +221,63 @@ def animated_text(text, color=Fore.WHITE, speed=0.02, newline=True):
 	if newline:
 		print() # new line after text
 
-# --- Animated sparkle effect for success/warning/info ---
-def animated_effect(text, effect_type="success"):
-	symbols = ["✦", "✧", "★", "☆", "✪", "✫"]
-	color = {"success": Fore.GREEN, "warning": Fore.YELLOW, "info": Fore.CYAN}.get(effect_type, Fore.WHITE)
-	for c in text:
-		sys.stdout.write(color + c + Style.RESET_ALL)
+# --- Clean, non-intrusive animated sparkle effect for success/warning/info ---
+def animated_effect(text, effect_type="success", delay=0.02):
+	"""
+	Displays text unchanged, but puts animated symbols at the start and end.
+	effect_type: "success", "warning", "info" or other -> determines color.
+	delay: per-frame delay (seconds)
+	"""
+	# symbol sets and color mapping by effect type
+	symbol_sets = {
+		"success": ["✦", "✧", "★", "✪"],
+		"warning": ["✖", "⚠", "◆", "✚"],
+		"info": ["♦", "◈", "◍", "●"],
+		"default": ["#", "*", "•", "·"]
+	}
+	color_map = {
+		"success": Fore.GREEN,
+		"warning": Fore.YELLOW,
+		"info": Fore.CYAN
+	}
+	
+	symbols = symbol_sets.get(effect_type, symbol_sets["default"])
+	color = color_map.get(effect_type, Fore.WHITE)
+	
+	prefix = random.choice(symbols)
+	suffix = random.choice(symbols)
+	
+	# Build base display strings
+	base =f"{prefix} {text} {suffix}"
+	# track maximum printed lengthto be able to clear longer previous lines
+	max_len = len(base)
+	
+	# small prefix pulse (prefix changing)
+	for _ in range(3):
+		p = random.choice(symbols)
+		display = f"{p} {text}"
+		sys.stdout.write("\r" + color + display + " " * (max_len - len(display)) + Style.RESET_ALL)
 		sys.stdout.flush()
-		time.sleep(0.02)
-		if random.random() < 0.08:
-			sys.stdout.write(color + random.choice(symbols) + Style.RESET_ALL)
-			sys.stdout.flush()
-			time.sleep(0.01)
-	print()
+		time.sleep(delay)
+	
+	# solidified prefix
+	display = f"{prefix} {text}"
+	sys.stdout.write("\r" + color + display + " " * (max_len - len(display)) + Style.RESET_ALL)
+	sys.stdout.flush()
+	time.sleep(delay * 1.5)
+	
+	# suffix pulses (adding symbols at end)
+	for _ in range(3):
+		s = random.choice(symbols)
+		display = f"{prefix} {text} {s}"
+		sys.stdout.write("\r" + color + display + " " * (max_len - len(display)) + Style.RESET_ALL)
+		sys.stdout.flush()
+		time.sleep(delay * 1.5)
+	
+	# final stable line and newline
+	display = f"{prefix} {text} {suffix}"
+	sys.stdout.write("\r" + color + display + " " * (max_len - len(display)) + Style.RESET_ALL)
+	sys.stdout.flush()
 	
 # ---------------------------- 
 # Basic UI building blocks
