@@ -1,0 +1,30 @@
+Game/
+ ├─ game_loop.py
+ ├─ __init__.py
+ │
+ ├─ ui/
+ │   ├─ __init__.py
+ │   ├─ animated_text.py
+ │   ├─ spinner_input.py
+ │   ├─ colors.py
+ │   └─ theme_loader.py
+ │
+ ├─ items/
+ │   ├─ __init__.py
+ │   └─ items.py
+ │
+ ├─ inventory/
+ │   ├─ __init__.py
+ │   └─ inventory.py
+ │
+ ├─ save_system/
+ │   ├─ __init__.py
+ │   └─ save_system.py
+ │
+ ├─ quests/
+ │   ├─ __init__.py
+ │   └─ hollowbridge_factory.py
+ │
+ └─ util/
+     ├─ __init__.py
+     └─ text_effects.py   (OPTIONAL: your animated_effect can also live here)

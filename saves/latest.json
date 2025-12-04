@@ -1,0 +1,27 @@
+{
+    "player": {
+        "stats": {
+            "Health": 10,
+            "Agility": 5,
+            "Luck": 3
+        },
+        "inventory": [
+            "brass_gear",
+            "oil_can",
+            "metal_scrap",
+            "cloth_strip"
+        ]
+    },
+    "state": {
+        "visited": {
+            "hollowbridge_factory": true,
+            "factory_entered": true,
+            "factory_hall_gears": true,
+            "factory_upper": true,
+            "factory_exterior": true,
+            "factory_search_cloth": true
+        },
+        "choices": {},
+        "notes": ""
+    }
+}
