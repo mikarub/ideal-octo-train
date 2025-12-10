@@ -1,0 +1,1263 @@
+# quests/hollowbridge_factory.py
+
+from ui.animated_text import animated_text, animated_effect
+from ui.spinner_input import spinner_input
+from engine.utils import timed_challenge
+# quests/hollowbridge_factory.py
+# A full rewrite of the Hollowbridge Factory quest as a branching, interactive scene pack.
+# Replace your existing factory quest module with this code.
+
+import time
+import random
+
+# NOTE: this module expects the following helper functions to exist
+# in your project environment (they were present in your repo previously):
+#   animated_text(text, color=..., speed=...)
+#   animated_effect(text, effect_type)
+#   spinner_input(prompt, theme)
+#   timed_challenge(prompt, required_key, theme, stats, inventory, timeout=..., effects=None, reward_item=None)
+#
+# Save helpers (best-effort imports; fallbacks provided)
+try:
+    from engine.save_system import save_game_slot, quick_save
+except Exception:
+    try:
+        from save_system.save_system import save_game_slot, quick_save
+    except Exception:
+        save_game_slot = None
+        quick_save = None
+
+
+# ---------------------------
+# small utility helpers
+# ---------------------------
+def autosave_if_possible(save_state, stats, inventory, visited=None, choices=None, notes=""):
+    """Save to chosen slot or quicksave; silent on failure."""
+    player = {"hp": stats.get("Health", 10), "items": inventory.copy()}
+    visited = visited if visited is not None else save_state.get("visited", {})
+    choices = choices if choices is not None else save_state.get("choices", {})
+    notes = notes or save_state.get("notes", "")
+
+    if save_game_slot and save_state.get("last_slot"):
+        try:
+            save_game_slot(save_state["last_slot"], player, visited, choices, notes, stats, inventory)
+        except Exception:
+            # fallback to quick save if available
+            if quick_save:
+                try:
+                    quick_save(player, visited, choices, notes, stats, inventory)
+                except Exception:
+                    pass
+    elif quick_save:
+        try:
+            quick_save(player, visited, choices, notes, stats, inventory)
+        except Exception:
+            pass
+
+
+def present_choices(prompt, options, theme):
+    """
+    Present options (list of strings). Returns the selected option string (lowercased).
+    Uses spinner_input for consistent UI.
+    """
+    opts = " / ".join(options)
+    resp = spinner_input(f"{prompt}\n[{opts}]: ", theme)
+    return resp.strip().lower()
+
+
+# ---------------------------
+# Scenes / nodes
+# ---------------------------
+def entry_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou pull the factory gate and step into the chill of Hollowbridge.", color=theme["text_color"])
+    animated_text("A single bulb gutters overhead; the factory breathes in slow, metallic inhales.", color=theme["text_color"])
+
+    save_state.setdefault("visited", {})
+    save_state.setdefault("choices", {})
+
+    if not save_state["visited"].get("entry_first"):
+        animated_effect("A poster flaps on the wall: 'HOLLOWBRIDGE MECHANICS — SHIFT PATTERNS: NIGHT OPERATIVE.'", "info")
+        save_state["visited"]["entry_first"] = True
+        autosave_if_possible(save_state, stats, inventory)
+
+    choice = present_choices("Where do you go?", ["hall", "workshop", "stairs", "leave"], theme)
+
+    if choice == "hall":
+        return "hall"
+    if choice == "workshop":
+        return "workshop"
+    if choice == "stairs":
+        return "stairs"
+    if choice == "leave":
+        animated_text("The cold outside looks almost kinder than this place. You step back into the street.", color=theme["text_color"])
+        return "exit"
+    animated_effect("You hesitate, the dust listening.", "warning")
+    return "entry"
+
+
+def hall_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe main hall is filled with rusted machines. Conveyors lie like sleeping bones.", color=theme["text_color"])
+
+    if not save_state["visited"].get("hall_first"):
+        animated_effect("Something glints in the rubble near a machine base.", "info")
+        save_state["visited"]["hall_first"] = True
+        autosave_if_possible(save_state, stats, inventory)
+
+    options = ["inspect rubble", "listen", "go workshop", "go stairs", "return"]
+
+    choice = present_choices("What do you do?", options, theme)
+
+    if choice in ("inspect rubble", "inspect", "inspect rubble."):
+        if "brass_gear" not in inventory:
+            animated_effect("You find a brass gear, pitted but serviceable.", "info")
+            inventory.append("brass_gear")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("Only dust greets your hands.", "info")
+        return "hall"
+    if choice == "listen":
+        animated_text("Beneath the factory's breath you hear a faint rhythmic clank to the north.", color=theme["text_color"])
+        return "hall"
+    if choice == "go workshop":
+        return "workshop"
+    if choice == "go stairs":
+        return "stairs"
+    if choice == "return":
+        return "entry"
+    animated_effect("You fumble and do nothing.", "warning")
+    return "hall"
+
+
+def workshop_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe workshop smells of oil and old solder. Benches lie cluttered with tools and half-built things.", color=theme["text_color"])
+
+    # interactions: search bench, repair attempt, back
+    options = ["search bench", "repair attempt", "go hall", "go storage", "return"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "search bench":
+        if "precision_screwdriver" not in inventory:
+            animated_effect("You find a precision screwdriver beneath a coil of wire.", "info")
+            inventory.append("precision_screwdriver")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("Only old blueprints and a cold tea mug remain.", "info")
+        return "workshop"
+
+    if choice == "repair attempt":
+        # small skill check using Agility or Luck
+        # prefer using existing timed_challenge for immediate, but we can also make a quick skill check
+        animated_text("You attempt to patch a small motor. Press 'p' quickly when prompted to secure a bolt.", color=theme["text_color"])
+        ok = timed_challenge("Secure the bolt! Press 'p' now!", "p", theme, stats, inventory, timeout=4,
+                             effects={"success": {"Agility": 1}, "failure": {"Health": -1}}, reward_item=None)
+        if ok:
+            animated_effect("Motor hummed to life for an instant. You salvage a functioning coil.", "success")
+            if "coil" not in inventory:
+                inventory.append("coil")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("The bolt snaps; your hand stings.", "warning")
+        return "workshop"
+
+    if choice == "go storage":
+        return "storage"
+    if choice == "go hall":
+        return "hall"
+    if choice == "return":
+        return "entry"
+    animated_effect("You fumble and do nothing.", "warning")
+    return "workshop"
+
+
+def storage_scene(stats, inventory, theme, save_state):
+    animated_text("\nShelves sag with crates. Labels have long since faded.", color=theme["text_color"])
+
+    options = ["open crate", "scavenge tools", "go workshop", "go catwalk", "return"]
+    choice = present_choices("Options:", options, theme)
+
+    if choice == "open crate":
+        if "oil_can" not in inventory:
+            animated_effect("You pry open a crate and find an oil can tucked into straw.", "info")
+            inventory.append("oil_can")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("The crate is empty save for wood splinters.", "info")
+        return "storage"
+
+    if choice == "scavenge tools":
+        if "wrench" not in inventory:
+            animated_effect("You pick up an old wrench; it might fit stubborn bolts.", "info")
+            inventory.append("wrench")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("You find nothing else worth carrying.", "info")
+        return "storage"
+
+    if choice == "go workshop":
+        return "workshop"
+    if choice == "go catwalk":
+        return "catwalk"
+    if choice == "return":
+        return "entry"
+    animated_effect("You hesitate.", "warning")
+    return "storage"
+
+
+def catwalk_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou climb to the catwalk. Below, the factory yawns like a mechanical maw.", color=theme["text_color"])
+
+    options = ["peer down", "follow pipe", "go engine", "go stairs", "return"]
+    choice = present_choices("Choices:", options, theme)
+
+    if choice == "peer down":
+        animated_text("Glimpses of movement — belts, a lone automaton staggering under a crate — catch your eye.", color=theme["text_color"])
+        return "catwalk"
+    if choice == "follow pipe":
+        animated_text("You trace a steam pipe and find valve markings. Someone tampered with them recently.", color=theme["text_color"])
+        return "catwalk"
+    if choice == "go engine":
+        return "engine_room"
+    if choice == "go stairs":
+        return "stairs"
+    if choice == "return":
+        return "entry"
+    animated_effect("You falter on the narrow walk.", "warning")
+    return "catwalk"
+
+
+def stairs_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe stairs creak under your weight and the smell of oil grows stronger.", color=theme["text_color"])
+
+    options = ["climb up", "search step", "go hall", "go catwalk", "return"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "climb up":
+        animated_text("You climb carefully and reach a dusty walkway.", color=theme["text_color"])
+        return "catwalk"
+    if choice == "search step":
+        if "matchbox" not in inventory and random.random() < 0.4:
+            animated_effect("You find a matchbox wedged under a tread.", "info")
+            inventory.append("matchbox")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("Only dust and the echo of your footfall.", "info")
+        return "stairs"
+    if choice == "go hall":
+        return "hall"
+    if choice == "go catwalk":
+        return "catwalk"
+    if choice == "return":
+        return "entry"
+    animated_effect("You hesitate.", "warning")
+    return "stairs"
+
+
+# ---------------------------
+# Engine puzzle (multi-stage)
+# ---------------------------
+def engine_room_scene(stats, inventory, theme, save_state):
+    """
+    Multi-phase engine puzzle:
+     - diagnostics (observe panel)
+     - wiring puzzle (connect left->right)
+     - final extraction or shutdown
+    Success routes to engine_solved; failure may injure player and route back.
+    """
+    animated_text("\nA faint hum echoes as you near the engine room.", color=theme["text_color"])
+    animated_text("The massive generator flickers with unstable light.", color=theme["text_color"])
+
+    # Phase 0: decide whether to run diagnostics or force it
+    while True:
+        choice = present_choices("Approach the engine:", ["diagnostics", "force", "inspect", "leave"], theme)
+        if choice == "diagnostics":
+            # Display a small diagnostic readout (flavor)
+            animated_text("Phase 1 — Diagnostics: read the flickering panel.", color=theme["text_color"])
+            # give an interactive question (not strictly multiple choice)
+            panel_choice = present_choices("Which readout is most relevant to wiring repair?", ["voltage", "temperature", "pressure"], theme)
+            if panel_choice == "voltage":
+                animated_effect("You focus on voltage variances — a clear clue.", "info")
+                break
+            else:
+                animated_effect("You misread the panel; the engine coughs. Try again or inspect.", "warning")
+                # small penalty if they repeatedly choose wrong
+                if random.random() < 0.25:
+                    stats["Health"] = max(0, stats.get("Health", 0) - 1)
+                    animated_effect("A minor arc shocks you (-1 Health).", "warning")
+                continue
+
+        elif choice == "inspect":
+            # Use oil_can to give precise wiring hint (as requested previously)
+            if "oil_can" in inventory:
+                inventory.remove("oil_can")
+                animated_effect("You clean grime away — faint etched labels reveal one correct mapping: Left 2 -> Right 1.", "success")
+                # store the revealed hint in save_state for wiring phase
+                save_state.setdefault("engine_hints", {})["reveal_one"] = ("2", "1")
+            else:
+                animated_effect("The panel is grimy. Colored wires hint at pairs (red/blue/green).", "info")
+            continue
+
+        elif choice == "force":
+            animated_effect("You go for a brute approach — this is risky.", "warning")
+            ok = timed_challenge("Smash the access panel! Press 'm' now!", "m", theme, stats, inventory, timeout=3,
+                                 effects={"success": {}, "failure": {"Health": -2}}, reward_item=None)
+            if ok:
+                animated_effect("You ram open the panel, but many wires spark wildly.", "info")
+                # force the wiring puzzle to be harder (we'll set a penalty)
+                save_state["engine_force"] = True
+                break
+            else:
+                animated_effect("The panel resists and a surge throws you back (-2 Health).", "warning")
+                stats["Health"] = max(0, stats.get("Health", 0) - 2)
+                return "catwalk"  # thrown back to catwalk
+
+        elif choice == "leave":
+            return "catwalk"
+
+        else:
+            animated_effect("You pause, unsure.", "warning")
+
+    # Phase 2: wiring puzzle (simple but interactive)
+    solved = wiring_puzzle(stats, inventory, theme, save_state)
+    if solved:
+        save_state["visited"]["engine_solved"] = True
+        autosave_if_possible(save_state, stats, inventory)
+        return "engine_solved"
+    else:
+        # failure consequences: player may retreat, injured
+        if random.random() < 0.5:
+            animated_effect("You are thrown back by a crackle of electricity and scramble away.", "warning")
+            stats["Health"] = max(0, stats.get("Health", 0) - 2)
+            autosave_if_possible(save_state, stats, inventory)
+            return "catwalk"
+        else:
+            animated_effect("By some luck you avoid further damage but the panel remains angry.", "info")
+            return "catwalk"
+
+
+def wiring_puzzle(stats, inventory, theme, save_state):
+    """
+    A user-friendly wiring puzzle:
+    - There are three left sockets (1..3) and three right sockets (A..C).
+    - Player assigns each left to one right.
+    - If save_state has 'engine_hints' with 'reveal_one', use it.
+    - oil_can removal handled earlier.
+    - Provide 'hint' command that reveals color hint; if oil_can was consumed earlier we already stored reveal_one.
+    """
+    # create a correct map randomly (but stable for this puzzle instance)
+    correct_map = save_state.setdefault("engine_correct_map",
+                                       { "1": random.choice(["A", "B", "C"]),
+                                         "2": random.choice(["A", "B", "C"]),
+                                         "3": random.choice(["A", "B", "C"]) })
+    # ensure it's a permutation (simple fix)
+    # if duplicates, regenerate to be permutation
+    vals = list(correct_map.values())
+    if len(set(vals)) != 3:
+        choices = ["A", "B", "C"]
+        random.shuffle(choices)
+        correct_map = {"1": choices[0], "2": choices[1], "3": choices[2]}
+        save_state["engine_correct_map"] = correct_map
+
+    animated_text("\nWiring Panel: three sockets on the left (1,2,3) and three on the right (A,B,C).", color=theme["text_color"])
+    animated_text("Connect them by typing assignments like '1 A' (without quotes). Type 'hint' for hint, 'show' to show current mapping, 'done' to submit.", color=theme["text_color"])
+
+    # if engine_force was set earlier, increase difficulty by shuffling labels visually (flavor only)
+    if save_state.get("engine_force"):
+        animated_effect("Because you forced the panel, the labels flicker unpredictably. You must be careful.", "warning")
+
+    current_map = {}
+    max_attempts = 6
+    attempts = 0
+
+    while attempts < max_attempts:
+        cmd = spinner_input("Assign (e.g. '1 A'), or command [hint/show/done]: ", theme).strip().lower()
+        if not cmd:
+            continue
+        if cmd in ("show", "s"):
+            if current_map:
+                animated_text("Current mapping: " + ", ".join([f"{k}->{v}" for k, v in current_map.items()]), color=theme["text_color"])
+            else:
+                animated_text("No connections made yet.", color=theme["text_color"])
+            continue
+        if cmd == "hint":
+            # if concrete reveal exists (from oil_can), show it
+            hints = save_state.get("engine_hints", {})
+            if "reveal_one" in hints:
+                l, r = hints["reveal_one"]
+                animated_effect(f"Etched mark: Left {l} -> Right {r}", "info")
+            else:
+                animated_effect("The wire colors suggest pairs: red↔red, blue↔blue, green↔green.", "info")
+            attempts += 1
+            continue
+        if cmd == "done":
+            # check if mapping matches (must fill all three)
+            if set(current_map.keys()) != {"1", "2", "3"}:
+                animated_effect("All three left sockets must be assigned before submitting.", "warning")
+                continue
+            # evaluate correctness
+            correct = sum(1 for k, v in current_map.items() if correct_map.get(k) == v)
+            if correct == 3:
+                animated_effect("All connections hum with a clean note. The panel stabilizes.", "success")
+                return True
+            elif correct >= 2:
+                animated_effect("Most connections are right; a small tweak needed.", "info")
+                # allow one more chance
+                attempts += 1
+                continue
+            else:
+                animated_effect("The connections spark and the panel throws a warning. Try a# quests/hollowbridge_factory.py
+# A full rewrite of the Hollowbridge Factory quest as a branching, interactive scene pack.
+# Replace your existing factory quest module with this code.
+
+import time
+import random
+
+# NOTE: this module expects the following helper functions to exist
+# in your project environment (they were present in your repo previously):
+#   animated_text(text, color=..., speed=...)
+#   animated_effect(text, effect_type)
+#   spinner_input(prompt, theme)
+#   timed_challenge(prompt, required_key, theme, stats, inventory, timeout=..., effects=None, reward_item=None)
+#
+# Save helpers (best-effort imports; fallbacks provided)
+try:
+    from engine.save_system import save_game_slot, quick_save
+except Exception:
+    try:
+        from save_system.save_system import save_game_slot, quick_save
+    except Exception:
+        save_game_slot = None
+        quick_save = None
+
+
+# ---------------------------
+# small utility helpers
+# ---------------------------
+def autosave_if_possible(save_state, stats, inventory, visited=None, choices=None, notes=""):
+    """Save to chosen slot or quicksave; silent on failure."""
+    player = {"hp": stats.get("Health", 10), "items": inventory.copy()}
+    visited = visited if visited is not None else save_state.get("visited", {})
+    choices = choices if choices is not None else save_state.get("choices", {})
+    notes = notes or save_state.get("notes", "")
+
+    if save_game_slot and save_state.get("last_slot"):
+        try:
+            save_game_slot(save_state["last_slot"], player, visited, choices, notes, stats, inventory)
+        except Exception:
+            # fallback to quick save if available
+            if quick_save:
+                try:
+                    quick_save(player, visited, choices, notes, stats, inventory)
+                except Exception:
+                    pass
+    elif quick_save:
+        try:
+            quick_save(player, visited, choices, notes, stats, inventory)
+        except Exception:
+            pass
+
+
+def present_choices(prompt, options, theme):
+    """
+    Present options (list of strings). Returns the selected option string (lowercased).
+    Uses spinner_input for consistent UI.
+    """
+    opts = " / ".join(options)
+    resp = spinner_input(f"{prompt}\n[{opts}]: ", theme)
+    return resp.strip().lower()
+
+
+# ---------------------------
+# Scenes / nodes
+# ---------------------------
+def entry_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou pull the factory gate and step into the chill of Hollowbridge.", color=theme["text_color"])
+    animated_text("A single bulb gutters overhead; the factory breathes in slow, metallic inhales.", color=theme["text_color"])
+
+    save_state.setdefault("visited", {})
+    save_state.setdefault("choices", {})
+
+    if not save_state["visited"].get("entry_first"):
+        animated_effect("A poster flaps on the wall: 'HOLLOWBRIDGE MECHANICS — SHIFT PATTERNS: NIGHT OPERATIVE.'", "info")
+        save_state["visited"]["entry_first"] = True
+        autosave_if_possible(save_state, stats, inventory)
+
+    choice = present_choices("Where do you go?", ["hall", "workshop", "stairs", "leave"], theme)
+
+    if choice == "hall":
+        return "hall"
+    if choice == "workshop":
+        return "workshop"
+    if choice == "stairs":
+        return "stairs"
+    if choice == "leave":
+        animated_text("The cold outside looks almost kinder than this place. You step back into the street.", color=theme["text_color"])
+        return "exit"
+    animated_effect("You hesitate, the dust listening.", "warning")
+    return "entry"
+
+
+def hall_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe main hall is filled with rusted machines. Conveyors lie like sleeping bones.", color=theme["text_color"])
+
+    if not save_state["visited"].get("hall_first"):
+        animated_effect("Something glints in the rubble near a machine base.", "info")
+        save_state["visited"]["hall_first"] = True
+        autosave_if_possible(save_state, stats, inventory)
+
+    options = ["inspect rubble", "listen", "go workshop", "go stairs", "return"]
+
+    choice = present_choices("What do you do?", options, theme)
+
+    if choice in ("inspect rubble", "inspect", "inspect rubble."):
+        if "brass_gear" not in inventory:
+            animated_effect("You find a brass gear, pitted but serviceable.", "info")
+            inventory.append("brass_gear")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("Only dust greets your hands.", "info")
+        return "hall"
+    if choice == "listen":
+        animated_text("Beneath the factory's breath you hear a faint rhythmic clank to the north.", color=theme["text_color"])
+        return "hall"
+    if choice == "go workshop":
+        return "workshop"
+    if choice == "go stairs":
+        return "stairs"
+    if choice == "return":
+        return "entry"
+    animated_effect("You fumble and do nothing.", "warning")
+    return "hall"
+
+
+def workshop_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe workshop smells of oil and old solder. Benches lie cluttered with tools and half-built things.", color=theme["text_color"])
+
+    # interactions: search bench, repair attempt, back
+    options = ["search bench", "repair attempt", "go hall", "go storage", "return"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "search bench":
+        if "precision_screwdriver" not in inventory:
+            animated_effect("You find a precision screwdriver beneath a coil of wire.", "info")
+            inventory.append("precision_screwdriver")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("Only old blueprints and a cold tea mug remain.", "info")
+        return "workshop"
+
+    if choice == "repair attempt":
+        # small skill check using Agility or Luck
+        # prefer using existing timed_challenge for immediate, but we can also make a quick skill check
+        animated_text("You attempt to patch a small motor. Press 'p' quickly when prompted to secure a bolt.", color=theme["text_color"])
+        ok = timed_challenge("Secure the bolt! Press 'p' now!", "p", theme, stats, inventory, timeout=4,
+                             effects={"success": {"Agility": 1}, "failure": {"Health": -1}}, reward_item=None)
+        if ok:
+            animated_effect("Motor hummed to life for an instant. You salvage a functioning coil.", "success")
+            if "coil" not in inventory:
+                inventory.append("coil")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("The bolt snaps; your hand stings.", "warning")
+        return "workshop"
+
+    if choice == "go storage":
+        return "storage"
+    if choice == "go hall":
+        return "hall"
+    if choice == "return":
+        return "entry"
+    animated_effect("You fumble and do nothing.", "warning")
+    return "workshop"
+
+
+def storage_scene(stats, inventory, theme, save_state):
+    animated_text("\nShelves sag with crates. Labels have long since faded.", color=theme["text_color"])
+
+    options = ["open crate", "scavenge tools", "go workshop", "go catwalk", "return"]
+    choice = present_choices("Options:", options, theme)
+
+    if choice == "open crate":
+        if "oil_can" not in inventory:
+            animated_effect("You pry open a crate and find an oil can tucked into straw.", "info")
+            inventory.append("oil_can")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("The crate is empty save for wood splinters.", "info")
+        return "storage"
+
+    if choice == "scavenge tools":
+        if "wrench" not in inventory:
+            animated_effect("You pick up an old wrench; it might fit stubborn bolts.", "info")
+            inventory.append("wrench")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("You find nothing else worth carrying.", "info")
+        return "storage"
+
+    if choice == "go workshop":
+        return "workshop"
+    if choice == "go catwalk":
+        return "catwalk"
+    if choice == "return":
+        return "entry"
+    animated_effect("You hesitate.", "warning")
+    return "storage"
+
+
+def catwalk_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou climb to the catwalk. Below, the factory yawns like a mechanical maw.", color=theme["text_color"])
+
+    options = ["peer down", "follow pipe", "go engine", "go stairs", "return"]
+    choice = present_choices("Choices:", options, theme)
+
+    if choice == "peer down":
+        animated_text("Glimpses of movement — belts, a lone automaton staggering under a crate — catch your eye.", color=theme["text_color"])
+        return "catwalk"
+    if choice == "follow pipe":
+        animated_text("You trace a steam pipe and find valve markings. Someone tampered with them recently.", color=theme["text_color"])
+        return "catwalk"
+    if choice == "go engine":
+        return "engine_room"
+    if choice == "go stairs":
+        return "stairs"
+    if choice == "return":
+        return "entry"
+    animated_effect("You falter on the narrow walk.", "warning")
+    return "catwalk"
+
+
+def stairs_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe stairs creak under your weight and the smell of oil grows stronger.", color=theme["text_color"])
+
+    options = ["climb up", "search step", "go hall", "go catwalk", "return"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "climb up":
+        animated_text("You climb carefully and reach a dusty walkway.", color=theme["text_color"])
+        return "catwalk"
+    if choice == "search step":
+        if "matchbox" not in inventory and random.random() < 0.4:
+            animated_effect("You find a matchbox wedged under a tread.", "info")
+            inventory.append("matchbox")
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("Only dust and the echo of your footfall.", "info")
+        return "stairs"
+    if choice == "go hall":
+        return "hall"
+    if choice == "go catwalk":
+        return "catwalk"
+    if choice == "return":
+        return "entry"
+    animated_effect("You hesitate.", "warning")
+    return "stairs"
+
+
+# ---------------------------
+# Engine puzzle (multi-stage)
+# ---------------------------
+def engine_room_scene(stats, inventory, theme, save_state):
+    """
+    Multi-phase engine puzzle:
+     - diagnostics (observe panel)
+     - wiring puzzle (connect left->right)
+     - final extraction or shutdown
+    Success routes to engine_solved; failure may injure player and route back.
+    """
+    animated_text("\nA faint hum echoes as you near the engine room.", color=theme["text_color"])
+    animated_text("The massive generator flickers with unstable light.", color=theme["text_color"])
+
+    # Phase 0: decide whether to run diagnostics or force it
+    while True:
+        choice = present_choices("Approach the engine:", ["diagnostics", "force", "inspect", "leave"], theme)
+        if choice == "diagnostics":
+            # Display a small diagnostic readout (flavor)
+            animated_text("Phase 1 — Diagnostics: read the flickering panel.", color=theme["text_color"])
+            # give an interactive question (not strictly multiple choice)
+            panel_choice = present_choices("Which readout is most relevant to wiring repair?", ["voltage", "temperature", "pressure"], theme)
+            if panel_choice == "voltage":
+                animated_effect("You focus on voltage variances — a clear clue.", "info")
+                break
+            else:
+                animated_effect("You misread the panel; the engine coughs. Try again or inspect.", "warning")
+                # small penalty if they repeatedly choose wrong
+                if random.random() < 0.25:
+                    stats["Health"] = max(0, stats.get("Health", 0) - 1)
+                    animated_effect("A minor arc shocks you (-1 Health).", "warning")
+                continue
+
+        elif choice == "inspect":
+            # Use oil_can to give precise wiring hint (as requested previously)
+            if "oil_can" in inventory:
+                inventory.remove("oil_can")
+                animated_effect("You clean grime away — faint etched labels reveal one correct mapping: Left 2 -> Right 1.", "success")
+                # store the revealed hint in save_state for wiring phase
+                save_state.setdefault("engine_hints", {})["reveal_one"] = ("2", "1")
+            else:
+                animated_effect("The panel is grimy. Colored wires hint at pairs (red/blue/green).", "info")
+            continue
+
+        elif choice == "force":
+            animated_effect("You go for a brute approach — this is risky.", "warning")
+            ok = timed_challenge("Smash the access panel! Press 'm' now!", "m", theme, stats, inventory, timeout=3,
+                                 effects={"success": {}, "failure": {"Health": -2}}, reward_item=None)
+            if ok:
+                animated_effect("You ram open the panel, but many wires spark wildly.", "info")
+                # force the wiring puzzle to be harder (we'll set a penalty)
+                save_state["engine_force"] = True
+                break
+            else:
+                animated_effect("The panel resists and a surge throws you back (-2 Health).", "warning")
+                stats["Health"] = max(0, stats.get("Health", 0) - 2)
+                return "catwalk"  # thrown back to catwalk
+
+        elif choice == "leave":
+            return "catwalk"
+
+        else:
+            animated_effect("You pause, unsure.", "warning")
+
+    # Phase 2: wiring puzzle (simple but interactive)
+    solved = wiring_puzzle(stats, inventory, theme, save_state)
+    if solved:
+        save_state["visited"]["engine_solved"] = True
+        autosave_if_possible(save_state, stats, inventory)
+        return "engine_solved"
+    else:
+        # failure consequences: player may retreat, injured
+        if random.random() < 0.5:
+            animated_effect("You are thrown back by a crackle of electricity and scramble away.", "warning")
+            stats["Health"] = max(0, stats.get("Health", 0) - 2)
+            autosave_if_possible(save_state, stats, inventory)
+            return "catwalk"
+        else:
+            animated_effect("By some luck you avoid further damage but the panel remains angry.", "info")
+            return "catwalk"
+
+
+def wiring_puzzle(stats, inventory, theme, save_state):
+    """
+    A user-friendly wiring puzzle:
+    - There are three left sockets (1..3) and three right sockets (A..C).
+    - Player assigns each left to one right.
+    - If save_state has 'engine_hints' with 'reveal_one', use it.
+    - oil_can removal handled earlier.
+    - Provide 'hint' command that reveals color hint; if oil_can was consumed earlier we already stored reveal_one.
+    """
+    # create a correct map randomly (but stable for this puzzle instance)
+    correct_map = save_state.setdefault("engine_correct_map",
+                                       { "1": random.choice(["A", "B", "C"]),
+                                         "2": random.choice(["A", "B", "C"]),
+                                         "3": random.choice(["A", "B", "C"]) })
+    # ensure it's a permutation (simple fix)
+    # if duplicates, regenerate to be permutation
+    vals = list(correct_map.values())
+    if len(set(vals)) != 3:
+        choices = ["A", "B", "C"]
+        random.shuffle(choices)
+        correct_map = {"1": choices[0], "2": choices[1], "3": choices[2]}
+        save_state["engine_correct_map"] = correct_map
+
+    animated_text("\nWiring Panel: three sockets on the left (1,2,3) and three on the right (A,B,C).", color=theme["text_color"])
+    animated_text("Connect them by typing assignments like '1 A' (without quotes). Type 'hint' for hint, 'show' to show current mapping, 'done' to submit.", color=theme["text_color"])
+
+    # if engine_force was set earlier, increase difficulty by shuffling labels visually (flavor only)
+    if save_state.get("engine_force"):
+        animated_effect("Because you forced the panel, the labels flicker unpredictably. You must be careful.", "warning")
+
+    current_map = {}
+    max_attempts = 6
+    attempts = 0
+
+    while attempts < max_attempts:
+        cmd = spinner_input("Assign (e.g. '1 A'), or command [hint/show/done]: ", theme).strip().lower()
+        if not cmd:
+            continue
+        if cmd in ("show", "s"):
+            if current_map:
+                animated_text("Current mapping: " + ", ".join([f"{k}->{v}" for k, v in current_map.items()]), color=theme["text_color"])
+            else:
+                animated_text("No connections made yet.", color=theme["text_color"])
+            continue
+        if cmd == "hint":
+            # if concrete reveal exists (from oil_can), show it
+            hints = save_state.get("engine_hints", {})
+            if "reveal_one" in hints:
+                l, r = hints["reveal_one"]
+                animated_effect(f"Etched mark: Left {l} -> Right {r}", "info")
+            else:
+                animated_effect("The wire colors suggest pairs: red↔red, blue↔blue, green↔green.", "info")
+            attempts += 1
+            continue
+        if cmd == "done":
+            # check if mapping matches (must fill all three)
+            if set(current_map.keys()) != {"1", "2", "3"}:
+                animated_effect("All three left sockets must be assigned before submitting.", "warning")
+                continue
+            # evaluate correctness
+            correct = sum(1 for k, v in current_map.items() if correct_map.get(k) == v)
+            if correct == 3:
+                animated_effect("All connections hum with a clean note. The panel stabilizes.", "success")
+                return True
+            elif correct >= 2:
+                animated_effect("Most connections are right; a small tweak needed.", "info")
+                # allow one more chance
+                attempts += 1
+                continue
+            else:
+                animated_effect("The connections spark and the panel throws a warning. Try again or step back.", "warning")
+                attempts += 1
+                continue
+
+        # parse assignment like "1 a" or "2 b"
+        parts = cmd.split()
+        if len(parts) >= 2:
+            left = parts[0]
+            right = parts[1].upper()
+            if left not in ("1", "2", "3") or right not in ("A", "B", "C"):
+                animated_effect("Invalid sockets. Left: 1/2/3   Right: A/B/C", "warning")
+                continue
+            # ensure no duplicate right assignments
+            if right in current_map.values():
+                animated_effect(f"Right {right} is already used.", "warning")
+                continue
+            current_map[left] = right
+            animated_effect(f"Set Left {left} -> Right {right}", "info")
+            attempts += 1
+            continue
+        animated_effect("Command not understood.", "warning")
+
+    # if we exit the loop, puzzle failed
+    animated_effect("You failed to stabilise the panel in time.", "warning")
+    return False
+
+
+# ---------------------------
+# Post-engine scenes & endings
+# ---------------------------
+def engine_solved_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe engine sighs and settles. A corridor that had been barred lurches open to the east.", color=theme["text_color"])
+    animated_effect("Power flows through old wires; lights flicker to life, revealing a map on the wall.", "info")
+
+    # unlocking new scene flags
+    save_state["visited"]["engine_powered"] = True
+    autosave_if_possible(save_state, stats, inventory)
+
+    choice = present_choices("Where now?", ["control room", "rescue", "escape", "return"], theme)
+
+    if choice == "control room":
+        return "control_room"
+    if choice == "rescue":
+        return "rescue_worker"
+    if choice == "escape":
+        return "escape_sequence"
+    if choice == "return":
+        return "catwalk"
+    animated_effect("You freeze, indecisive.", "warning")
+    return "engine_solved"
+
+
+def control_room_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou enter a small control room — terminals glow with queued jobs and old logs.", color=theme["text_color"])
+    options = ["read logs", "override door", "back"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "read logs":
+        animated_text("The logs hint that the Heart Engine consumes 'fear-energy' to keep processes stable.", color=theme["text_color"])
+        save_state["choices"]["read_logs"] = True
+        autosave_if_possible(save_state, stats, inventory)
+        return "control_room"
+
+    if choice == "override door":
+        animated_text("You try to override the security door; it requires a coil and a gear.", color=theme["text_color"])
+        if "coil" in inventory and "brass_gear" in inventory:
+            animated_effect("You fit the coil and gear — the override accepts and opens a door to the roof.", "success")
+            save_state["visited"]["override_success"] = True
+            autosave_if_possible(save_state, stats, inventory)
+            return "upper_levels"
+        else:
+            animated_effect("You lack the required components.", "warning")
+            return "control_room"
+
+    if choice == "back":
+        return "engine_solved"
+    animated_effect("You pause.", "warning")
+    return "control_room"
+
+
+def rescue_worker_scene(stats, inventory, theme, save_state):
+    animated_text("\nA trapped worker sits slumped among crates.", color=theme["text_color"])
+    options = ["help", "search pockets", "leave"]
+    choice = present_choices("Do you help?", options, theme)
+
+    if choice == "help":
+        # small skill/timed challenge
+        animated_text("You brace and lift crates; press 'l' to heave when prompted.", color=theme["text_color"])
+        ok = timed_challenge("Heave! Press 'l' now!", "l", theme, stats, inventory, timeout=4,
+                             effects={"success": {"Luck": 1}, "failure": {"Health": -1}}, reward_item=None)
+        if ok:
+            animated_effect("You free the worker. He coughs, thanks you, and gives you a small charm.", "success")
+            inventory.append("worker_charm")
+            save_state["choices"]["rescued_worker"] = True
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("You strain and the crate shifts awkwardly; you hurt your shoulder.", "warning")
+        return "engine_solved"
+
+    if choice == "search pockets":
+        animated_effect("You find a cryptic note with a scribbled cipher: 'HEART - 3'.", "info")
+        save_state["notes"] = save_state.get("notes", "") + " | Found cipher note"
+        autosave_if_possible(save_state, stats, inventory)
+        return "engine_solved"
+
+    if choice == "leave":
+        return "engine_solved"
+
+    animated_effect("You stand uncertain.", "warning")
+    return "engine_solved"
+
+
+def upper_levels_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe upper levels smell of ozone. A hatch promises a route to the roof.", color=theme["text_color"])
+    options = ["open hatch", "scout around", "descend"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "open hatch":
+        # if override_success flag exists
+        if save_state["visited"].get("override_success"):
+            animated_effect("You lift the hatch and a ladder leads to bright air. This is your escape route.", "success")
+            save_state["visited"]["escape_open"] = True
+            autosave_if_possible(save_state, stats, inventory)
+            return "escape_sequence"
+        else:
+            animated_effect("The hatch is locked; perhaps controls below open it.", "warning")
+            return "upper_levels"
+
+    if choice == "scout around":
+        animated_text("You peer into vents; a security drone stirs but doesn't notice you.", color=theme["text_color"])
+        return "upper_levels"
+    if choice == "descend":
+        return "control_room"
+    animated_effect("You pause, unsettled.", "warning")
+    return "upper_levels"
+
+
+def escape_sequence_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou make for the roof as alarms begin a long, mournful wail.", color=theme["text_color"])
+    # endings vary based on whether worker was rescued, whether override succeeded, and hp
+    resc = save_state["choices"].get("rescued_worker", False)
+    over = save_state["visited"].get("override_success", False)
+    hp = stats.get("Health", 0)
+
+    if resc and over and hp >= 5:
+        animated_effect("You and the rescued worker burst through the hatch into the chilly night. Freedom tastes like rain.", "success")
+        ending = "best"
+    elif (resc or over) and hp >= 3:
+        animated_effect("You escape but breath heavily; someone else may still be trapped inside.", "info")
+        ending = "mixed"
+    elif hp < 3:
+        animated_effect("You stagger onto the roof, wounded and shaken. You crawl away as the factory groans behind you.", "warning")
+        ending = "grim"
+    else:
+        animated_effect("You slip from the ladder as alarms scream; you manage to get away, but the factory keeps its secrets.", "info")
+        ending = "neutral"
+
+    # final autosave as completed
+    save_state["visited"]["ending"] = ending
+    autosave_if_possible(save_state, stats, inventory)
+    # show summary
+    animated_text("\n=== Escape Summary ===", color=theme["accent"])
+    animated_text(f"Ending: {ending}", color=theme["text_color"])
+    animated_text(f"Health: {hp}", color=theme["text_color"])
+    animated_text(f"Inventory: {', '.join(inventory) if inventory else 'Empty'}", color=theme["text_color"])
+    animated_effect("Quest Complete: The Lament of Hollowbridge Factory", "success")
+    return "exit"
+
+
+# ---------------------------
+# Scene dispatcher (simple)
+# ---------------------------
+SCENE_FUNCTIONS = {
+    "entry": entry_scene,
+    "hall": hall_scene,
+    "workshop": workshop_scene,
+    "storage": storage_scene,
+    "catwalk": catwalk_scene,
+    "stairs": stairs_scene,
+    "engine_room": engine_room_scene,
+    "engine_solved": engine_solved_scene,
+    "control_room": control_room_scene,
+    "rescue_worker": rescue_worker_scene,
+    "upper_levels": upper_levels_scene,
+    "escape_sequence": escape_sequence_scene,
+}
+
+def lament_of_hollowbridge_factory(stats, inventory, theme, save_state):
+    """
+    Main loop for the rewritten, branching factory quest.
+    Saves state to save_state dict (visited/choices/notes), autosaves periodically.
+    """
+    # ensure save_state structure
+    save_state.setdefault("visited", {})
+    save_state.setdefault("choices", {})
+    save_state.setdefault("notes", "")
+
+    # start at entry unless a scene is stored in save_state
+    cur = save_state.get("current_scene", "entry")
+
+    while True:
+        # if engine solved and we want to continue inside solved route, map names if needed
+        scene_fn = SCENE_FUNCTIONS.get(cur)
+        if not scene_fn:
+            # unknown scene — bail to entry
+            animated_effect(f"Scene '{cur}' missing. Returning to entry.", "warning")
+            cur = "entry"
+            continue
+
+        # call scene
+        next_scene = scene_fn(stats, inventory, theme, save_state)
+
+        # update current scene and persist small state
+        if next_scene:
+            save_state["current_scene"] = next_scene
+        else:
+            save_state["current_scene"] = cur
+
+        # handle special exit value
+        if next_scene == "exit":
+            autosave_if_possible(save_state, stats, inventory)
+            break
+
+        # loop continues with new scene
+        cur = next_scene
+
+    # at quest end return to caller
+    return
+gain or step back.", "warning")
+                attempts += 1
+                continue
+
+        # parse assignment like "1 a" or "2 b"
+        parts = cmd.split()
+        if len(parts) >= 2:
+            left = parts[0]
+            right = parts[1].upper()
+            if left not in ("1", "2", "3") or right not in ("A", "B", "C"):
+                animated_effect("Invalid sockets. Left: 1/2/3   Right: A/B/C", "warning")
+                continue
+            # ensure no duplicate right assignments
+            if right in current_map.values():
+                animated_effect(f"Right {right} is already used.", "warning")
+                continue
+            current_map[left] = right
+            animated_effect(f"Set Left {left} -> Right {right}", "info")
+            attempts += 1
+            continue
+        animated_effect("Command not understood.", "warning")
+
+    # if we exit the loop, puzzle failed
+    animated_effect("You failed to stabilise the panel in time.", "warning")
+    return False
+
+
+# ---------------------------
+# Post-engine scenes & endings
+# ---------------------------
+def engine_solved_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe engine sighs and settles. A corridor that had been barred lurches open to the east.", color=theme["text_color"])
+    animated_effect("Power flows through old wires; lights flicker to life, revealing a map on the wall.", "info")
+
+    # unlocking new scene flags
+    save_state["visited"]["engine_powered"] = True
+    autosave_if_possible(save_state, stats, inventory)
+
+    choice = present_choices("Where now?", ["control room", "rescue", "escape", "return"], theme)
+
+    if choice == "control room":
+        return "control_room"
+    if choice == "rescue":
+        return "rescue_worker"
+    if choice == "escape":
+        return "escape_sequence"
+    if choice == "return":
+        return "catwalk"
+    animated_effect("You freeze, indecisive.", "warning")
+    return "engine_solved"
+
+
+def control_room_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou enter a small control room — terminals glow with queued jobs and old logs.", color=theme["text_color"])
+    options = ["read logs", "override door", "back"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "read logs":
+        animated_text("The logs hint that the Heart Engine consumes 'fear-energy' to keep processes stable.", color=theme["text_color"])
+        save_state["choices"]["read_logs"] = True
+        autosave_if_possible(save_state, stats, inventory)
+        return "control_room"
+
+    if choice == "override door":
+        animated_text("You try to override the security door; it requires a coil and a gear.", color=theme["text_color"])
+        if "coil" in inventory and "brass_gear" in inventory:
+            animated_effect("You fit the coil and gear — the override accepts and opens a door to the roof.", "success")
+            save_state["visited"]["override_success"] = True
+            autosave_if_possible(save_state, stats, inventory)
+            return "upper_levels"
+        else:
+            animated_effect("You lack the required components.", "warning")
+            return "control_room"
+
+    if choice == "back":
+        return "engine_solved"
+    animated_effect("You pause.", "warning")
+    return "control_room"
+
+
+def rescue_worker_scene(stats, inventory, theme, save_state):
+    animated_text("\nA trapped worker sits slumped among crates.", color=theme["text_color"])
+    options = ["help", "search pockets", "leave"]
+    choice = present_choices("Do you help?", options, theme)
+
+    if choice == "help":
+        # small skill/timed challenge
+        animated_text("You brace and lift crates; press 'l' to heave when prompted.", color=theme["text_color"])
+        ok = timed_challenge("Heave! Press 'l' now!", "l", theme, stats, inventory, timeout=4,
+                             effects={"success": {"Luck": 1}, "failure": {"Health": -1}}, reward_item=None)
+        if ok:
+            animated_effect("You free the worker. He coughs, thanks you, and gives you a small charm.", "success")
+            inventory.append("worker_charm")
+            save_state["choices"]["rescued_worker"] = True
+            autosave_if_possible(save_state, stats, inventory)
+        else:
+            animated_effect("You strain and the crate shifts awkwardly; you hurt your shoulder.", "warning")
+        return "engine_solved"
+
+    if choice == "search pockets":
+        animated_effect("You find a cryptic note with a scribbled cipher: 'HEART - 3'.", "info")
+        save_state["notes"] = save_state.get("notes", "") + " | Found cipher note"
+        autosave_if_possible(save_state, stats, inventory)
+        return "engine_solved"
+
+    if choice == "leave":
+        return "engine_solved"
+
+    animated_effect("You stand uncertain.", "warning")
+    return "engine_solved"
+
+
+def upper_levels_scene(stats, inventory, theme, save_state):
+    animated_text("\nThe upper levels smell of ozone. A hatch promises a route to the roof.", color=theme["text_color"])
+    options = ["open hatch", "scout around", "descend"]
+    choice = present_choices("Actions:", options, theme)
+
+    if choice == "open hatch":
+        # if override_success flag exists
+        if save_state["visited"].get("override_success"):
+            animated_effect("You lift the hatch and a ladder leads to bright air. This is your escape route.", "success")
+            save_state["visited"]["escape_open"] = True
+            autosave_if_possible(save_state, stats, inventory)
+            return "escape_sequence"
+        else:
+            animated_effect("The hatch is locked; perhaps controls below open it.", "warning")
+            return "upper_levels"
+
+    if choice == "scout around":
+        animated_text("You peer into vents; a security drone stirs but doesn't notice you.", color=theme["text_color"])
+        return "upper_levels"
+    if choice == "descend":
+        return "control_room"
+    animated_effect("You pause, unsettled.", "warning")
+    return "upper_levels"
+
+
+def escape_sequence_scene(stats, inventory, theme, save_state):
+    animated_text("\nYou make for the roof as alarms begin a long, mournful wail.", color=theme["text_color"])
+    # endings vary based on whether worker was rescued, whether override succeeded, and hp
+    resc = save_state["choices"].get("rescued_worker", False)
+    over = save_state["visited"].get("override_success", False)
+    hp = stats.get("Health", 0)
+
+    if resc and over and hp >= 5:
+        animated_effect("You and the rescued worker burst through the hatch into the chilly night. Freedom tastes like rain.", "success")
+        ending = "best"
+    elif (resc or over) and hp >= 3:
+        animated_effect("You escape but breath heavily; someone else may still be trapped inside.", "info")
+        ending = "mixed"
+    elif hp < 3:
+        animated_effect("You stagger onto the roof, wounded and shaken. You crawl away as the factory groans behind you.", "warning")
+        ending = "grim"
+    else:
+        animated_effect("You slip from the ladder as alarms scream; you manage to get away, but the factory keeps its secrets.", "info")
+        ending = "neutral"
+
+    # final autosave as completed
+    save_state["visited"]["ending"] = ending
+    autosave_if_possible(save_state, stats, inventory)
+    # show summary
+    animated_text("\n=== Escape Summary ===", color=theme["accent"])
+    animated_text(f"Ending: {ending}", color=theme["text_color"])
+    animated_text(f"Health: {hp}", color=theme["text_color"])
+    animated_text(f"Inventory: {', '.join(inventory) if inventory else 'Empty'}", color=theme["text_color"])
+    animated_effect("Quest Complete: The Lament of Hollowbridge Factory", "success")
+    return "exit"
+
+
+# ---------------------------
+# Scene dispatcher (simple)
+# ---------------------------
+SCENE_FUNCTIONS = {
+    "entry": entry_scene,
+    "hall": hall_scene,
+    "workshop": workshop_scene,
+    "storage": storage_scene,
+    "catwalk": catwalk_scene,
+    "stairs": stairs_scene,
+    "engine_room": engine_room_scene,
+    "engine_solved": engine_solved_scene,
+    "control_room": control_room_scene,
+    "rescue_worker": rescue_worker_scene,
+    "upper_levels": upper_levels_scene,
+    "escape_sequence": escape_sequence_scene,
+}
+
+def lament_of_hollowbridge_factory(stats, inventory, theme, save_state):
+    """
+    Main loop for the rewritten, branching factory quest.
+    Saves state to save_state dict (visited/choices/notes), autosaves periodically.
+    """
+    # ensure save_state structure
+    save_state.setdefault("visited", {})
+    save_state.setdefault("choices", {})
+    save_state.setdefault("notes", "")
+
+    # start at entry unless a scene is stored in save_state
+    cur = save_state.get("current_scene", "entry")
+
+    while True:
+        # if engine solved and we want to continue inside solved route, map names if needed
+        scene_fn = SCENE_FUNCTIONS.get(cur)
+        if not scene_fn:
+            # unknown scene — bail to entry
+            animated_effect(f"Scene '{cur}' missing. Returning to entry.", "warning")
+            cur = "entry"
+            continue
+
+        # call scene
+        next_scene = scene_fn(stats, inventory, theme, save_state)
+
+        # update current scene and persist small state
+        if next_scene:
+            save_state["current_scene"] = next_scene
+        else:
+            save_state["current_scene"] = cur
+
+        # handle special exit value
+        if next_scene == "exit":
+            autosave_if_possible(save_state, stats, inventory)
+            break
+
+        # loop continues with new scene
+        cur = next_scene
+
+    # at quest end return to caller
+    return

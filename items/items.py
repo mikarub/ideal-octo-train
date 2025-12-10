@@ -59,3 +59,4 @@ CRAFTING_RECIPES = {
 
 def get_item_description(item):
     return ITEM_DESCRIPTIONS.get(item, "An unremarkable object.")
+	

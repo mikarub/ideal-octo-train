@@ -1,38 +1,160 @@
 # game_loop.py
-# ----------------------------------------------------
-# Centralized game loop controlling navigation,
-# inventory, quests, save/load and player stats.
-# ----------------------------------------------------
-
+from scenes.runner import run_scene
 from ui.animated_text import animated_text
-from ui.spinner_input import spinner_input
-from ui.show_stats_inventory import show_stats_inventory
-from engine.save_system import save_game_slot, quick_save, quick_load, delete_save_slot, list_save_slots_return, list_save_slots_print
-from ui import THEMES
+from engine.themes import THEMES
+from scenes.runner import run_scene
+import engine.engine_handlers
+import engine.engine_puzzle
+import sys
+from colorama import init
+# import the quest package so scenes register
+from quests.hollowbridge_factory import enter_factory  # ensures scenes are registered on import
 
-from save_load import save_menu
-from inventory import combine_items_menu
-from quests.hollowbridge_factory import enter_factory
+# Try to import the save/slot helpers you actually have
+try:
+    from engine.save_system import (
+        list_save_slots_return,
+        load_game_slot,
+        quick_load,
+        quick_save,
+        save_game_slot
+    )
+except Exception:
+    # fallback names/locations used previously in your tree
+    try:
+        from save_system.save_system import (
+            list_save_slots_return,
+            load_game_slot,
+            quick_load,
+            quick_save,
+            save_game_slot
+        )
+    except Exception:
+        # if import fails we'll raise an informative error
+        raise ImportError("Could not import your save helpers. Expected engine.save_system or save_system.save_system.")
+
+# Try to import the runner scene system (optional). If it's not present we'll call the quest directly.
+try:
+    from scenes.runner import run_scene
+    have_runner = True
+except Exception:
+    have_runner = False
+
+# Try to import the quest entry point as a fallback
+# adjust to your exact module path if different
+try:
+    from quests.hollowbridge_factory import enter_factory as fallback_enter_factory
+except Exception:
+    # some variants in your tree used different paths
+    try:
+        from game.quests.lament_factory import lament_of_hollowbridge_factory as fallback_enter_factory
+    except Exception:
+        fallback_enter_factory = None
 
 
-# ----------------------------------------------------
-# MAIN GAME LOOP
-# ----------------------------------------------------
+def choose_slot_numbered(slots):
+    """Show numbered slots and return chosen slot name (or None)."""
+    if not slots:
+        print("\n(No save slots found)\n")
+        return None
+    print("\nAvailable save slots:")
+    for i, s in enumerate(slots, start=1):
+        print(f"[{i}] {s}")
+    print("[B] Back")
+    while True:
+        choice = input("Choose slot number to load (or B): ").strip().lower()
+        if choice in ("b", "back"):
+            return None
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(slots):
+                return slots[idx]
+        print("Invalid choice. Try again.")
+
+# game_loop.py (replace existing main() with this)
+
+import sys
+from colorama import init
+init(autoreset=True)
+
+# Try to import the save/slot helpers you actually have
+try:
+    from engine.save_system import (
+        list_save_slots_return,
+        load_game_slot,
+        quick_load,
+        quick_save,
+        save_game_slot
+    )
+except Exception:
+    # fallback names/locations used previously in your tree
+    try:
+        from save_system.save_system import (
+            list_save_slots_return,
+            load_game_slot,
+            quick_load,
+            quick_save,
+            save_game_slot
+        )
+    except Exception:
+        # if import fails we'll raise an informative error
+        raise ImportError("Could not import your save helpers. Expected engine.save_system or save_system.save_system.")
+
+# Try to import the runner scene system (optional). If it's not present we'll call the quest directly.
+try:
+    from scenes.runner import run_scene
+    have_runner = True
+except Exception:
+    have_runner = False
+
+# Try to import the quest entry point as a fallback
+# adjust to your exact module path if different
+try:
+    from quests.hollowbridge_factory import lament_of_hollowbridge_factory as fallback_enter_factory
+except Exception:
+    # some variants in your tree used different paths
+    try:
+        from game.quests.lament_factory import lament_of_hollowbridge_factory as fallback_enter_factory
+    except Exception:
+        fallback_enter_factory = None
+
+
+def choose_slot_numbered(slots):
+    """Show numbered slots and return chosen slot name (or None)."""
+    if not slots:
+        print("\n(No save slots found)\n")
+        return None
+    print("\nAvailable save slots:")
+    for i, s in enumerate(slots, start=1):
+        print(f"[{i}] {s}")
+    print("[B] Back")
+    while True:
+        choice = input("Choose slot number to load (or B): ").strip().lower()
+        if choice in ("b", "back"):
+            return None
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(slots):
+                return slots[idx]
+        print("Invalid choice. Try again.")
+
 
 def main():
-    theme = THEMES["victorian"]
+    # basic defaults used if creating a new game
+    default_stats = {"Health": 10, "Agility": 5, "Luck": 3}
+    default_inventory = []
 
-    # Initial player stats
-    stats = {
-        "Health": 10,
-        "Agility": 5,
-        "Luck": 3
-    }
+    # Start menu
+    print("\n=== HOLLOWBRIDGE: Prologue ===\n")
+    print("1) New Game")
+    print("2) Load Game (choose a slot)")
+    print("3) Quick Load")
+    print("4) Exit\n")
 
-    # Player inventory
-    inventory = []
+    choice = input("> ").strip()
 
-    # Save metadata (shared across modules)
+    stats = default_stats.copy()
+    inventory = default_inventory.copy()
     save_state = {
         "last_slot": None,
         "visited": {},
@@ -40,53 +162,81 @@ def main():
         "notes": ""
     }
 
-    animated_text("=== RPG: Hollowbridge Prologue ===\n", color=theme["accent"])
-    animated_text("Type 'exit' at any prompt to quit the game.\n", color=theme["text_color"])
-    animated_text("Type 'save' at the main menu to open the Save Menu.", color=theme["text_color"])
-    animated_text("You may also combine items using the 'combine' command.\n", color=theme["text_color"])
-
-    # ------------------------------
-    # GAME LOOP
-    # ------------------------------
-    while True:
-        choice = spinner_input(
-            "\nChoose: [enter quest / inventory / combine / save / exit] ",
-            theme
-        ).strip().lower()
-
-        if choice == "exit":
-            animated_text("Farewell, wanderer.", color=theme["text_color"])
-            break
-
-        # ---------- Inventory ----------
-        elif choice in ("inventory", "inv"):
-            show_stats_inventory(stats, inventory, theme)
-
-        # ---------- Combine Items ----------
-        elif choice in ("combine", "craft", "use"):
-            combine_items_menu(inventory, theme)
-
-        # ---------- Save Menu ----------
-        elif choice == "save":
-            save_menu(
-                {"hp": stats.get("Health", 10), "items": inventory.copy()},
-                stats,
-                inventory,
-                save_state,
-                theme
-            )
-
-        # ---------- Enter Quest ----------
-        elif choice in ("enter quest", "quest", "enter", "start"):
-            enter_factory(stats, inventory, theme, save_state)
-
+    if choice == "2":
+        # show numbered slots using the existing helper
+        slots = list_save_slots_return()
+        slot = choose_slot_numbered(slots)
+        if slot:
+            loaded = load_game_slot(slot)
+            if loaded:
+                player_data, visited, choices, notes, engine, meta = loaded
+                # populate stats and inventory from engine block if present,
+                # otherwise from player_data for compatibility
+                engine_stats = engine.get("stats", {}) if engine else {}
+                engine_inventory = engine.get("inventory", []) if engine else player_data.get("items", [])
+                if engine_stats:
+                    stats.update(engine_stats)
+                inventory.clear()
+                inventory.extend(engine_inventory or player_data.get("items", []))
+                # player hp override to keep compatibility
+                stats["Health"] = player_data.get("hp", stats.get("Health", 10))
+                save_state["visited"] = visited or {}
+                save_state["choices"] = choices or {}
+                save_state["notes"] = notes or ""
+                save_state["last_slot"] = slot
+                print(f"\nLoaded slot '{slot}'.\n")
+            else:
+                print("\nFailed to load slot — starting a new game instead.\n")
+    elif choice == "3":
+        loaded = quick_load()
+        if loaded:
+            player_data, visited, choices, notes, engine, meta = loaded
+            engine_stats = engine.get("stats", {}) if engine else {}
+            engine_inventory = engine.get("inventory", []) if engine else player_data.get("items", [])
+            if engine_stats:
+                stats.update(engine_stats)
+            inventory.clear()
+            inventory.extend(engine_inventory or player_data.get("items", []))
+            stats["Health"] = player_data.get("hp", stats.get("Health", 10))
+            save_state["visited"] = visited or {}
+            save_state["choices"] = choices or {}
+            save_state["notes"] = notes or ""
+            save_state["last_slot"] = "quick"
+            print("\nQuickload successful.\n")
         else:
-            animated_text("Command not recognised.", color=theme["text_color"])
+            print("\nNo quicksave found — starting a new game.\n")
+    elif choice == "4":
+        print("Bye.")
+        return
+    else:
+        print("\nStarting a New Game...\n")
 
+    # now dispatch into the scene/quest system
+    theme = None
+    try:
+        # try to read THEMES from engine.themes if available
+        from engine.themes import THEMES
+        theme = THEMES.get("victorian", THEMES.get("classic", {}))
+    except Exception:
+        # fallback minimal theme
+        theme = {"prompt_color": "", "text_color": "", "accent": ""}
 
-# ----------------------------------------------------
-# Run directly
-# ----------------------------------------------------
+    # Try to run via scene runner if present
+    if have_runner:
+        try:
+            run_scene("enter_factory", stats, inventory, theme, save_state)
+            return
+        except Exception as e:
+            print(f"[runner failed -> fallback] {e}")
+
+    # fallback: call quest entry directly (if imported successfully)
+    if fallback_enter_factory:
+        fallback_enter_factory(stats, inventory, theme, save_state)
+    else:
+        raise RuntimeError("No scene runner or quest entry function available. Please wire run_scene or provide fallback_enter_factory.")
+
 
 if __name__ == "__main__":
     main()
+
+

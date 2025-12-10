@@ -53,3 +53,56 @@ def timed_challenge(prompt, required_key, theme, stats, inventory, timeout=5, ef
                 stats[k] = max(0, stats.get(k, 0) + v)
 
     return success
+
+def skill_check(stats, skill_name, difficulty=5, critical_margin=3):
+    """
+    Performs a skill check based on player stats.
+
+    Parameters
+    ----------
+    stats : dict
+        Player stat dictionary, e.g. {"Strength": 4, "Agility": 6, ...}
+    skill_name : str
+        Name of the skill to test against.
+    difficulty : int
+        The target number to beat. Higher = harder.
+    critical_margin : int
+        How much above/below determines critical success/failure.
+
+    Returns
+    -------
+    tuple (result, roll, total)
+        result: "success", "failure", "critical_success", "critical_failure"
+        roll: the raw d10 roll (1–10)
+        total: roll + player skill value
+    """
+
+    # Retrieve skill level, default 0 if missing
+    skill_value = stats.get(skill_name, 0)
+
+    # Roll a d10
+    roll = random.randint(1, 10)
+    total = roll + skill_value
+
+    # Narration
+    animated_text(f"\n● Skill Check: {skill_name} (Difficulty {difficulty})")
+    animated_text(f"  → Roll: {roll}   Skill: {skill_value}   Total: {total}")
+
+    # Evaluate result
+    target = difficulty
+
+    if total >= target + critical_margin:
+        animated_effect("Critical success!", "success")
+        return "critical_success", roll, total
+
+    if total >= target:
+        animated_effect("Success.", "success")
+        return "success", roll, total
+
+    if total <= target - critical_margin:
+        animated_effect("Critical failure!", "warning")
+        return "critical_failure", roll, total
+
+    animated_effect("Failure.", "warning")
+    return "failure", roll, total
+	
