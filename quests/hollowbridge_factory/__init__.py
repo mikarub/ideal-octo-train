@@ -9,13 +9,4 @@ from .workshop import workshop_scene
 from .storage import storage_scene
 from .catwalk import catwalk_scene
 from .engine_room import engine_room_scene
-
-__all__ = [
-    "enter_factory",
-    "hall_scene",
-    "stairs_scene",
-    "workshop_scene",
-    "storage_scene",
-    "catwalk_scene",
-    "engine_room_scene",
-]
+from .powered import factory_powered

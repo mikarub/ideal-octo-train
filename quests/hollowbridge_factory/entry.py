@@ -1,25 +1,32 @@
+# quests/hollowbridge_factory/entry.py
 from ui.animated_text import animated_text, animated_effect
 from ui.spinner_input import spinner_input
 from scenes.runner import register_scene, run_scene
 
 @register_scene("enter_factory")
 def enter_factory(stats, inventory, theme, save_state):
-    animated_text("\nYou stand before the iron doors of the Hollowbridge Factory.", color=theme["text_color"])
-    visited = save_state.setdefault("visited", {})
+	animated_text("\nYou push open the heavy metal doors.", color=theme["text_color"])
+	animated_text("They groan loudly, echoing through the vast factory interior.", color=theme["text_color"])
+	from scenes.runner import SCENE_REGISTRY
+	print(SCENE_REGISTRY.keys())
+			
+	if not save_state.get("visited", {}).get("factory_entered"):
+		animated_effect("A cloud of dust rises as your footsteps disturb long-settled debris.", "info")
+		save_state.setdefault("visited", {})["factory_entered"] = True
+		
+	while True:
+		choice = spinner_input("[enter hall / leave]: ", theme).strip().lower()
 
-    if not visited.get("factory_arrival"):
-        animated_effect("Smoke curls from the vents — the place has not fully slept.", "info")
-        visited["factory_arrival"] = True
-    else:
-        animated_effect("The doors yawl open, familiar and terrible.", "info")
+		if choice == "enter hall":
+			return "factory_hall"
 
-    # Entry always leads to the Hall (Hub)
-    while True:
-        choice = spinner_input("[enter hall / leave]: ", theme).strip().lower()
-        if choice in ("enter", "hall", "enter hall"):
-            return run_scene("factory_hall", stats, inventory, theme, save_state)
-        elif choice == "leave":
-            animated_text("You step back into the mist, for now.", color=theme["text_color"])
-            return
-        else:
-            animated_effect("You hesitate — the doors are impatient.", "warning")
+		if choice == "inspect doors":
+			#animated_text("The doors are reinforced steel. Whatever was built here, it mattered.", theme["accent"])
+			print("The doors are reinforced steel. Whatever was built here, it mattered.")
+			
+		elif choice == "leave":
+			animated_effect("You step back into the fog-lined street.", "info")
+			return None
+
+		else:
+			animated_effect("You pause, unsure.", "warning")

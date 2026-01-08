@@ -12,6 +12,7 @@ THEMES = {
 	"victorian": {
 		"text_color": Fore.LIGHTWHITE_EX,
 		"accent": Fore.CYAN,
+		"prompt_color": Fore.CYAN,
 		"warning": Fore.LIGHTYELLOW_EX,
 		"danger": Fore.LIGHTRED_EX,
 		"reset": Style.RESET_ALL

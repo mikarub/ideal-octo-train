@@ -5,33 +5,36 @@ from scenes.runner import register_scene, run_scene
 
 @register_scene("factory_stairs")
 def stairs_scene(stats, inventory, theme, save_state):
-    animated_text("\nYou ascend a flight of iron stairs. The air smells of oil and memory.", color=theme["text_color"])
     visited = save_state.setdefault("visited", {})
+    flags = save_state.setdefault("flags", {})
+    
+    animated_text("The stairwell groans under your weight. Rust flakes drift down like ash.", color=theme["text_color"])
 
-    # immediate hazard choice
-    animated_text("A rung looks loose. You could try to hop it or test it.", color=theme["text_color"])
+    if not visited.get("stairs"):
+        animated_effect("A broken handrail hangs loose. One wrong step could be fatal.", "warning")
+        visited["stairs"] = True
+        
     while True:
-        choice = spinner_input("[test / hop / back]: ", theme).strip().lower()
-        if choice == "test":
-            # simple Agility check
-            agi = stats.get("Agility", 0)
-            if agi >= 5:
-                animated_effect("You test the rung — it's stable. You proceed carefully and gain confidence.", "info")
-                stats["Agility"] = agi + 0  # no change, but narrative
+        choice = spinner_input("[climb / inspect / go back]: ", theme).strip().lower()
+        
+        # INSPECT
+        if choice == "inspect":
+            animated_effect("You test each step before committing. The structure might hold.", "info")
+            flags["stairs_climbed"] = True
+            flags["catwalk_access"] = True
+            
+        # CLIMB    
+        if choice == "climb":
+            if not flags.get("stairs_climbed"):
+                animated_effect("You hesitate. Rushing this could be dangerous.", "warning")
             else:
-                animated_effect("The rung cracks; you twist and shrug it off (-1 Health).", "warning")
-                stats["Health"] = max(0, stats.get("Health", 0) - 1)
-            # go to catwalk from here
-            return run_scene("factory_catwalk", stats, inventory, theme, save_state)
-        elif choice == "hop":
-            if stats.get("Agility", 0) >= 6:
-                animated_effect("You bound up the stairs with a flourish.", "success")
-                return run_scene("factory_catwalk", stats, inventory, theme, save_state)
-            else:
-                animated_effect("You miss your footing and tumble — bruise (-1 Health).", "warning")
-                stats["Health"] = max(0, stats.get("Health", 0) - 1)
-                return run_scene("factory_hall", stats, inventory, theme, save_state)
-        elif choice in ("back", "b"):
-            return run_scene("factory_hall", stats, inventory, theme, save_state)
+                animated_effect("You reach the top of the stairwell.", "info")
+                return "factory_catwalk"
+        
+        # GO BACK
+        elif choice == "go back":
+            animated_effect("You descend back into the hall.", "info")
+            return "factory_hall"
+        
         else:
-            animated_effect("Your movement stalls — choose an action.", "warning")
+            animated_effect("The stairs creak ominously.", "warning")

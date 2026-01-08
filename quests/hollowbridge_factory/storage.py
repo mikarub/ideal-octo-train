@@ -5,27 +5,45 @@ from scenes.runner import register_scene, run_scene
 
 @register_scene("factory_storage")
 def storage_scene(stats, inventory, theme, save_state):
-    animated_text("\nThe storage room smells of oil and old cloth.", color=theme["text_color"])
     visited = save_state.setdefault("visited", {})
+    
+    animated_text("Crates and barrels fill the storage room. Labels have long since faded.", color=theme["text_color"])
 
-    if not visited.get("factory_storage"):
-        animated_effect("Crates line the walls. One lid is ajar.", "info")
-        visited["factory_storage"] = True
+    if not visited.get("storage"):
+        animated_effect("One crate lies broken open.", "info")
+        visited["storage"] = True
 
     while True:
-        choice = spinner_input("[open crate / inspect crates / back]: ", theme).strip().lower()
-        if choice == "open crate":
-            if "oil_can" not in inventory:
-                animated_effect("You open the crate and find an Oil Can—very handy.", "info")
-                inventory.append("oil_can")
+        choice = spinner_input("[inspect / take manual / take oil / hall / leave]: ", theme).strip().lower()
+        
+        # INSPECT
+        if choice == "inspect":
+            animated_effect("Among the debris is a pressure regulation manual.", "info")                
+        
+        # TAKE MANUAL
+        elif choice == "take manual":
+            if "pressure_manual" in inventory:
+                animated_effect("You already have the manual.", "warning")
             else:
-                animated_effect("The crate is empty now.", "info")
-        elif choice == "inspect crates":
-            animated_text("You notice a crate marked 'fragile - engineering parts'.", color=theme["text_color"])
-            if "brass_gear" not in inventory and stats.get("Luck", 0) > 1:
-                animated_effect("Tucked between packing straw: a spare brass gear.", "info")
-                inventory.append("brass_gear")
-        elif choice in ("back", "b"):
-            return run_scene("factory_hall", stats, inventory, theme, save_state)
+                animated_effect("You take the pressure manual. Some pages are still readable.", "info")
+                inventory.append("pressure_manual")
+                
+        # TAKE OIL        
+        elif choice == "take oil":
+            if "oil_can" in inventory:
+                animated_effect("The oil can is already in your pack.", "warning")
+            else:
+                animated_effect("You take a small can of machine oil.", "success")
+                inventory.append("oil_can")
+        
+        # HALL    
+        elif choice == "hall":
+            animated_effect("You return to the main hall.", "info")
+            return "factory_hall"
+        
+        # LEAVE
+        elif choice == "leave":
+            return "factory_hall"
+        
         else:
-            animated_effect("Your hands search blindly through dust.", "warning")
+            animated_effect("The air smells stale.", "warning")

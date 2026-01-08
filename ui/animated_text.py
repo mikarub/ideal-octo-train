@@ -20,7 +20,7 @@ COLOR_MAP = {
     None: Fore.WHITE
 }
 
-def animated_text(text, delay=0.00, color=None, newline=True):
+def animated_text(text, delay=0.00, speed=None, color=None, newline=True):
     """
     Print text optionally character-by-character.
     - text: string to print
@@ -28,6 +28,9 @@ def animated_text(text, delay=0.00, color=None, newline=True):
     - color: color name or Colorama code (optional)
     - newline: whether to append newline at end
     """
+    assert isinstance(color, (str, type(None))), f"animated_text color broken: {color}"
+    if speed is not None:
+        delay = speed
     col = COLOR_MAP.get(color, color)  # allow passing a Colorama code or name
     if delay and delay > 0:
         for ch in text:

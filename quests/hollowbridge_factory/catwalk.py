@@ -5,31 +5,37 @@ from scenes.runner import register_scene, run_scene
 
 @register_scene("factory_catwalk")
 def catwalk_scene(stats, inventory, theme, save_state):
-    animated_text("\nYou cross a rickety catwalk high above the factory floor.", color=theme["text_color"])
     visited = save_state.setdefault("visited", {})
+    flags = save_state.setdefault("flags", {})
+    
+    animated_text("A narrow catwalk stretches over the factory floor. Machinery lies dormant below.", color=theme["text_color"])
+    
+    if not visited.get("catwalk"):
+        animated_effect("From here, you can see the engine room through a shattered window.", "info")
+        animated_effect("A control panel inside flickers faintly.", "info")
+        visited["catwalk"] = True
 
-    if not visited.get("factory_catwalk_first"):
-        animated_effect("Below, cogs turn like sleeping teeth. A faint hum drifts from the engine room.", "info")
-        visited["factory_catwalk_first"] = True
-
-    # Offer inspect, jump, or approach engine choices
     while True:
-        choice = spinner_input("[inspect / approach engine / jump down / back]: ", theme).strip().lower()
-        if choice == "inspect":
-            if "oil_can" in inventory:
-                animated_effect("You oil a squeaky joint and notice a hidden panel with wiring diagrams.", "info")
-                # give hint in notes
-                save_state.setdefault("notes", "")
-                save_state["notes"] += "Found wiring hint on catwalk.\n"
+        choice = spinner_input("[inspect engine / cross / go back]: ", theme).strip().lower()
+        
+        # INSPECT ENGINE
+        if choice == "inspect engine":
+            animated_effect("Pressure gauges, valves and a cold ignition chamber.", "info")
+            animated_effect("You'll need power and proper sequencing to start it.", "info")
+            flags["engine_access"] = True
+            
+        # CROSS CATWALK
+        elif choice == "cross":
+            if not flags.get("engine_access"):
+                animated_effect("You don't understand the machinery well enough yet.", "warning")
             else:
-                animated_effect("You peer over the edge but the hum feels distant. Maybe some oil would steady your gaze.", "info")
-        elif choice == "approach engine":
-            return run_scene("factory_engine_room", stats, inventory, theme, save_state)
-        elif choice == "jump down":
-            animated_effect("You leap — it's a long drop. You survive but are shaken (-2 Health).", "warning")
-            stats["Health"] = max(0, stats.get("Health", 0) - 2)
-            return run_scene("factory_hall", stats, inventory, theme, save_state)
-        elif choice in ("back", "b"):
-            return run_scene("factory_hall", stats, inventory, theme, save_state)
+                animated_effect("You carefully cross toward the engine room door.", "info")
+                return "factory_engine"
+        
+        # GO BACK
+        elif choice == "go back":
+            animated_effect("You retreat down the stairs.", "info")
+            return "factory_stairs"
+            
         else:
-            animated_effect("The catwalk creaks; choose carefully.", "warning")
+            animated_effect("The metal grating vibrates beneath your boots.", "warning")

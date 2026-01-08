@@ -1,38 +1,52 @@
+# quests/hollowbridge_factory/hall.py
 from ui.animated_text import animated_text, animated_effect
 from ui.spinner_input import spinner_input
 from scenes.runner import register_scene, run_scene
 
 @register_scene("factory_hall")
 def hall_scene(stats, inventory, theme, save_state):
-    animated_text("\nThe main hall is a cathedral of rust and belts.", color=theme["text_color"])
-    animated_text("A network of walkways and stairs branch off in every direction.", color=theme["text_color"])
-
     visited = save_state.setdefault("visited", {})
-
-    if not visited.get("factory_hall_first"):
-        animated_effect("A faded signage points: WORKSHOP ←  STAIR →  CATWALK ↑  STORAGE ↓", "info")
-        visited["factory_hall_first"] = True
-        # small starter item possibility
-        if "brass_gear" not in inventory and stats.get("Luck", 0) > 2:
-            animated_effect("A loose Brass Gear glints by the wall — you pocket it.", "info")
-            inventory.append("brass_gear")
-
-    # present clear hub choices
+    flags = save_state.setdefault("flags", {})
+    
+    animated_text("You stand in the factory's main hall. Rusted walkways stretch above you.", color=theme["text_color"])
+        
+    if not visited.get("hall"):
+        animated_effect("Doorways lead to several sections of the factory.", "info")
+        visited["hall"] = True
+    
     while True:
-        choice = spinner_input("[workshop / stairs / storage / catwalk / engine / exit]: ", theme).strip().lower()
-        if choice == "workshop":
-            return run_scene("factory_workshop", stats, inventory, theme, save_state)
-        elif choice == "stairs":
-            return run_scene("factory_stairs", stats, inventory, theme, save_state)
+        choice = spinner_input("[inspect hall / workshop / storage / stairs / leave]: ", theme).strip().lower()
+        
+        # INSPECT
+        if choice == "inspect hall":
+             animated_effect("You spot a stairwell leading up, but part of it has collapsed.", "info")
+             animated_effect("A narrow catwalk is visible above - accessible from the stairs.", "info")
+             animated_effect("A side door leads to a storage room.", "info")
+             flags["hall_inspected"] = True
+             flags["stairs_unlocked"] = True
+        
+        # WORKSHOP             
+        elif choice == "workshop":
+            animated_effect("You head into the workshop.", "info")
+            return "factory_workshop"
+        
+        # STORAGE    
         elif choice == "storage":
-            return run_scene("factory_storage", stats, inventory, theme, save_state)
-        elif choice == "catwalk":
-            return run_scene("factory_catwalk", stats, inventory, theme, save_state)
-        elif choice == "engine":
-            # engine is deeper — approaching may require items/choices
-            return run_scene("factory_engine_room", stats, inventory, theme, save_state)
-        elif choice in ("exit", "leave"):
-            animated_text("You slip back out into the night.", color=theme["text_color"])
-            return
+            animated_effect("You move towards the storage room.", "info")
+            return "factory_storage"
+        
+        # STAIRS (GATED)
+        elif choice == "stairs":
+            if not flags.get("stairs_unlocked"):
+                animated_effect("You're not sure where the stairs lead. Better inspect the hall.", "warning")
+            else:
+                animated_effect("You climb the damaged stairs cautiously.", "info")
+                return "factory_stairs"
+        
+        # LEAVE GAME        
+        elif choice == "leave":
+            animated_effect("You turn back towards the fog outside the factory.", "info")
+            return None
+            
         else:
-            animated_effect("You stand uncertain in the echoing hall.", "warning")
+            animated_effect("Your footsteps echo through the empty hall.", "warning")

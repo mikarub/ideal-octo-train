@@ -5,30 +5,38 @@ from scenes.runner import register_scene, run_scene
 
 @register_scene("factory_workshop")
 def workshop_scene(stats, inventory, theme, save_state):
-    animated_text("\nYou step into the workshop. Benches sag under broken instruments.", color=theme["text_color"])
     visited = save_state.setdefault("visited", {})
-
-    if not visited.get("factory_workshop"):
-        animated_effect("A broken toolbox rests in the corner.", "info")
-        visited["factory_workshop"] = True
+    #items = save_state.setdefault("items", {})
+    
+    animated_text("Workbenches line the walls. Tools lie scattered under a layer of grime.", color=theme["text_color"])
+    
+    if not visited.get("workshop"):
+        animated_effect("Something metallic glints beneath a torn cloth.", "info")
+        visited["workshop"] = True
 
     while True:
-        choice = spinner_input("[search toolbox / repair bench / back]: ", theme).strip().lower()
-        if choice == "search toolbox":
-            if "precision_screwdriver" not in inventory:
-                animated_effect("You pries open a rusted case and find a precision screwdriver.", "info")
-                inventory.append("precision_screwdriver")
+        choice = spinner_input("[inspect / take wrench / hall / leave]: ", theme).strip().lower()
+        
+        # INSPECT
+        if choice == "inspect":
+            animated_effect("Most tools are useless, but one wrench looks intact.", "info")
+        
+        # TAKE WRENCH 
+        elif choice == "take wrench":
+            if "wrench" in inventory:
+                animated_effect("You already took the wrench.", "warning")
             else:
-                animated_effect("Nothing else of use remains in the box.", "info")
-        elif choice == "repair bench":
-            # small puzzle: need precision_screwdriver to fix gadget
-            if "precision_screwdriver" in inventory:
-                animated_effect("Using the screwdriver you repair an odd contraption that reveals a small key.", "success")
-                if "small_key" not in inventory:
-                    inventory.append("small_key")
-            else:
-                animated_effect("Your hands work, but without a fine tool you can only make noise.", "warning")
-        elif choice in ("back", "b"):
-            return run_scene("factory_hall", stats, inventory, theme, save_state)
+                animated_effect("You take the heavy wrench. It feels reassuring", "success")
+                inventory.append("wrench")
+    
+        # HALL
+        elif choice == "hall":
+            animated_effect("You leave the workshop.", "info")
+            return "factory_hall"
+        
+        # LEAVE
+        elif choice == "leave":
+            return "factory_hall"
+        
         else:
-            animated_effect("You fumble; nothing happens.", "warning")
+            animated_effect("The workshop is silent.", "warning")
